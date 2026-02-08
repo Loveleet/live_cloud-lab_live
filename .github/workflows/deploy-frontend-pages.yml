@@ -1,0 +1,48 @@
+# Deploy ONLY the frontend to GitHub Pages on push. No "github-pages" environment needed.
+# One-time: Settings → Pages → Source: "Deploy from a branch" → Branch: gh-pages → / (root).
+# Optional secret: API_BASE_URL (default: your cloud API).
+# Build runs from lab-trading-dashboard/ (this repo has frontend in a subdir).
+
+name: Deploy frontend to GitHub Pages
+
+on:
+  push:
+    branches: [main, lab_live]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch || github.ref_name }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: lab-trading-dashboard/package-lock.json
+
+      - name: Install and build
+        working-directory: lab-trading-dashboard
+        env:
+          VITE_API_BASE_URL: ${{ secrets.API_BASE_URL || 'http://150.241.244.130:10000' }}
+          VITE_BASE_PATH: /${{ github.event.repository.name }}/
+        run: |
+          npm ci
+          npm run build
+
+      - name: Deploy to GitHub Pages (gh-pages branch)
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: lab-trading-dashboard/dist
+          force_orphan: true
