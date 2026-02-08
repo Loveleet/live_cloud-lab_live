@@ -36,6 +36,16 @@ function getApiBaseUrl() {
 /** @deprecated Use getApiBaseUrl() or api() - kept for compatibility */
 export const API_BASE_URL = typeof window !== "undefined" ? getApiBaseUrl() : "";
 
+// Log URLs in console (so user can verify page URL and API base in DevTools)
+if (typeof window !== "undefined" && window.location?.hostname?.includes("github.io")) {
+  console.log("[LAB] Page URL:", window.location.href);
+  if (API_BASE_URL) {
+    console.log("[LAB] API base URL:", API_BASE_URL);
+  } else {
+    console.log("[LAB] API not set. Add tunnel URL: https://github.com/Loveleet/lab_live/settings/secrets/actions → API_BASE_URL");
+  }
+}
+
 export { getApiBaseUrl };
 
 export function api(path) {
