@@ -3,6 +3,8 @@ const CLOUD_API = "http://150.241.244.130:10000";
 
 /** Set by runtime config (api-config.json) when loaded — so GitHub Pages keeps working after cloud reboot */
 let runtimeApiBaseUrl = null;
+let loggedEmptyOnce = false;
+let fetchLoggedOnce = false;
 
 /**
  * Build-time default (env or cloud IP). On HTTPS we never use raw IP (no valid cert → ERR_SSL_PROTOCOL_ERROR).
@@ -39,7 +41,10 @@ function loadRuntimeApiConfig() {
   const path = (basePath ? basePath + "/" : "") + "api-config.json";
   const url = new URL(path, window.location.origin).href;
   const fetchUrl = url + (url.includes("?") ? "&" : "?") + "t=" + Date.now();
-  if (window.location?.hostname?.includes("github.io")) console.log("[LAB] Fetching api-config.json:", url);
+  if (window.location?.hostname?.includes("github.io") && !fetchLoggedOnce) {
+    fetchLoggedOnce = true;
+    console.log("[LAB] Fetching api-config.json:", url);
+  }
   return fetch(fetchUrl)
     .then((res) => {
       if (window.location?.hostname?.includes("github.io") && !res.ok) {
@@ -57,8 +62,9 @@ function loadRuntimeApiConfig() {
         runtimeApiBaseUrl = url;
         if (window.location?.hostname?.includes("github.io")) console.log("[LAB] api-config.json loaded, API base:", url);
         if (changed) window.dispatchEvent(new CustomEvent("api-config-loaded"));
-      } else if (window.location?.hostname?.includes("github.io")) {
-        console.log("[LAB] api-config.json has empty apiBaseUrl/tunnelUrl. Set API_BASE_URL secret and run Deploy or Update API config workflow.");
+      } else if (window.location?.hostname?.includes("github.io") && !loggedEmptyOnce) {
+        loggedEmptyOnce = true;
+        console.log("[LAB] api-config.json has empty apiBaseUrl/tunnelUrl. Set API_BASE_URL secret: https://github.com/Loveleet/lab_live/settings/secrets/actions then run Actions → Update API config (or Deploy frontend to GitHub Pages).");
       }
     })
     .catch(() => {
