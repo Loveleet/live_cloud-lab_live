@@ -1,5 +1,6 @@
 # Deploy ONLY the frontend to GitHub Pages on push. No "github-pages" environment needed.
-# One-time: Settings → Pages → Source: "Deploy from a branch" → Branch: gh-pages → / (root).
+# One-time: (1) Settings → Actions → General → Workflow permissions → Read and write permissions.
+# One-time: (2) Settings → Pages → Source: "Deploy from a branch" → Branch: gh-pages → / (root).
 # Optional secret: API_BASE_URL (default: your cloud API).
 # Build runs from lab-trading-dashboard/ (this repo has frontend in a subdir).
 
@@ -11,7 +12,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write   # required to push gh-pages branch
   pages: write
   id-token: write
 

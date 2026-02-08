@@ -40,7 +40,9 @@ git push origin lab_live
 1. **Actions** → click the latest run of **Deploy frontend to GitHub Pages**.
 2. If it’s **green** → wait 1–2 minutes, then open:  
    **https://loveleet.github.io/lab_live/**
-3. If it’s **red** → open the failed job and read the error. Fix (e.g. build error in repo, or **Settings → Actions → General** → Workflow permissions: **Read and write**), then re-run.
+3. If it’s **red** → open the failed job and read the error.
+   - **403 / "Permission denied to github-actions [bot]"**: Go to **Settings → Actions → General** → **Workflow permissions** → select **Read and write permissions** → Save. Then **Actions** → re-run the failed workflow.
+   - Build errors: fix in repo and push again.
 
 ---
 
@@ -52,3 +54,14 @@ git push origin lab_live
 | 2 | **Actions → Deploy frontend to GitHub Pages → Run workflow** (or push to trigger). |
 | 3 | When the run is green: **Settings → Pages** → Source: **Deploy from a branch** → Branch: **gh-pages**, Folder: **/ (root)** → Save. |
 | 4 | Open **https://loveleet.github.io/lab_live/**. |
+
+---
+
+## If "Deploy to GitHub Pages" step fails with 403
+
+The workflow needs permission to push the `gh-pages` branch:
+
+1. **Settings** → **Actions** → **General**.
+2. Under **Workflow permissions**, choose **Read and write permissions**.
+3. Click **Save**.
+4. **Actions** → open the failed run → **Re-run all jobs**.
