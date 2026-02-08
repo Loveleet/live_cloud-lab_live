@@ -1,5 +1,5 @@
-# Run every 2 minutes. Uses the current repo; no repo name is hardcoded.
-# Add steps here to refresh API config or trigger deploy when needed.
+# Run every 2 minutes. Writes api-config.json to gh-pages so the frontend can load the current API URL at runtime (no full redeploy needed after tunnel restart).
+# Uses the current repo; no repo name is hardcoded.
 
 name: Update API config
 
@@ -9,11 +9,31 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   update-api-config:
     runs-on: ubuntu-latest
     steps:
-      - name: Update API config
-        run: echo "API config check (add your steps here)"
+      - name: Checkout gh-pages
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Write api-config.json
+        run: |
+          node -e "
+          const fs = require('fs');
+          const url = process.env.API_BASE_URL || '';
+          fs.writeFileSync('api-config.json', JSON.stringify({ apiBaseUrl: url }));
+          "
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add api-config.json
+          git diff --staged --quiet || (git commit -m "chore: update api-config.json" && git push)

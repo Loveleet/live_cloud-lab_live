@@ -23,7 +23,7 @@ import RefreshControls from './components/RefreshControls';
 import SuperTrendPanel from "./SuperTrendPanel";
 import TradeComparePage from "./components/TradeComparePage";
 import SoundSettings from "./components/SoundSettings";
-import { API_BASE_URL, api } from "./config";
+import { API_BASE_URL, getApiBaseUrl, api } from "./config";
 
 // Animated SVG background for LAB title
 function AnimatedGraphBackground({ width = 400, height = 80, opacity = 0.4 }) {
@@ -130,6 +130,7 @@ const App = () => {
   const [selectedBox, setSelectedBox] = useState(null);
   const [tradeData, setTradeData] = useState([]);
   const [demoDataHint, setDemoDataHint] = useState(null); // when API returns _meta.demoData, show hint instead of demo rows
+  const [apiBaseForBanner, setApiBaseForBanner] = useState(() => (typeof getApiBaseUrl === "function" ? getApiBaseUrl() : ""));
   const [clientData, setClientData] = useState([]);
   const [logData, setLogData] = useState([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -336,8 +337,8 @@ const [selectedIntervals, setSelectedIntervals] = useState(() => {
   
 
   const refreshAllData = useCallback(async () => {
-    // On GitHub Pages with no API configured, skip requests to avoid 404 spam
-    if (typeof window !== "undefined" && window.location?.hostname?.includes("github.io") && !API_BASE_URL) {
+    // On GitHub Pages with no API configured, skip requests to avoid 404 spam (getApiBaseUrl() updates after api-config.json loads)
+    if (typeof window !== "undefined" && window.location?.hostname?.includes("github.io") && !getApiBaseUrl()) {
       setTradeData([]);
       setMachines([]);
       setLogData([]);
@@ -354,7 +355,7 @@ const [selectedIntervals, setSelectedIntervals] = useState(() => {
       const trades = Array.isArray(tradeJson.trades) ? tradeJson.trades : [];
       setDemoDataHint(tradeJson._meta?.demoData ? tradeJson._meta.hint || null : null);
 
-      const machinesRes = await fetch(`${API_BASE_URL}/api/machines`);
+      const machinesRes = await fetch(api("/api/machines"));
       const machinesJson = machinesRes.ok ? await machinesRes.json() : { machines: [] };
       const machinesList = Array.isArray(machinesJson.machines) ? machinesJson.machines : [];
 
@@ -363,18 +364,18 @@ const [selectedIntervals, setSelectedIntervals] = useState(() => {
       const logs = Array.isArray(logJson.logs) ? logJson.logs : [];
 
       // Fetch SuperTrend data
-      const superTrendRes = await fetch(`${API_BASE_URL}/api/supertrend`);
+      const superTrendRes = await fetch(api("/api/supertrend"));
       const superTrendJson = superTrendRes.ok ? await superTrendRes.json() : { supertrend: [] };
       setSuperTrendData(Array.isArray(superTrendJson.supertrend) ? superTrendJson.supertrend : []);
 
       // Fetch EMA trend data
-      const emaRes = await fetch(`${API_BASE_URL}/api/pairstatus`);
+      const emaRes = await fetch(api("/api/pairstatus"));
       const emaJson = emaRes.ok ? await emaRes.json() : null;
       setEmaTrends(emaJson);
 
       // Fetch BUY/SELL live flags
       try {
-        const flagsRes = await fetch(`${API_BASE_URL}/api/active-loss`);
+        const flagsRes = await fetch(api("/api/active-loss"));
         const flagsJson = flagsRes.ok ? await flagsRes.json() : null;
         setActiveLossFlags(flagsJson || null);
       } catch {
@@ -423,6 +424,16 @@ const [selectedIntervals, setSelectedIntervals] = useState(() => {
 
   useEffect(() => {
     refreshAllData();
+  }, [refreshAllData]);
+
+  // When api-config.json loads (runtime API URL), refresh data and re-render so banner can hide
+  useEffect(() => {
+    const onConfigLoaded = () => {
+      setApiBaseForBanner(getApiBaseUrl());
+      refreshAllData();
+    };
+    window.addEventListener("api-config-loaded", onConfigLoaded);
+    return () => window.removeEventListener("api-config-loaded", onConfigLoaded);
   }, [refreshAllData]);
 
   // Debug: log machine coverage and trade counts (raw vs filtered)
@@ -1291,7 +1302,7 @@ useEffect(() => {
 
   useEffect(() => {
     const fetchTrades = async () => {
-      if (typeof window !== "undefined" && window.location?.hostname?.includes("github.io") && !API_BASE_URL) return;
+      if (typeof window !== "undefined" && window.location?.hostname?.includes("github.io") && !getApiBaseUrl()) return;
       const res = await fetch(api("/api/trades"));
       const data = await res.json();
       
@@ -1400,7 +1411,7 @@ useEffect(() => {
               <div className={`flex-1 min-h-screen transition-all duration-300 ${isSidebarOpen ? "ml-64" : "ml-20"} overflow-hidden relative bg-[#f5f6fa] dark:bg-black`}>
                 {/* Main content area, no extra margin-top */}
                 <div className="p-8 pt-2 overflow-x-auto">
-                  {typeof window !== "undefined" && window.location?.hostname?.includes("github.io") && !API_BASE_URL && (
+                  {typeof window !== "undefined" && window.location?.hostname?.includes("github.io") && !apiBaseForBanner && (
                     <div className="mb-4 p-4 rounded-lg bg-blue-100 dark:bg-blue-900/40 border border-blue-400 dark:border-blue-600 text-blue-900 dark:text-blue-100 text-sm">
                       <strong className="block mb-2">API not configured for GitHub Pages</strong>
                       <p className="mb-2">To load data here, expose your API over HTTPS (e.g. Cloudflare Tunnel), then:</p>
@@ -1422,7 +1433,7 @@ useEffect(() => {
                       </ol>
                     </div>
                   )}
-                  {Array.isArray(tradeData) && tradeData.length === 0 && !demoDataHint && !(typeof window !== "undefined" && window.location?.hostname?.includes("github.io") && !API_BASE_URL) && (
+                  {Array.isArray(tradeData) && tradeData.length === 0 && !demoDataHint && !(typeof window !== "undefined" && window.location?.hostname?.includes("github.io") && !apiBaseForBanner) && (
                     <div className="mb-4 p-3 rounded-lg bg-amber-100 dark:bg-amber-900/30 border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200 text-sm">
                       <strong>No trade records in database.</strong> Table <code className="bg-amber-200/50 dark:bg-amber-800/50 px-1 rounded">alltraderecords</code> is empty. Machines and pairstatus are loading from the same DB. To see trades, add data or copy the database (see docs or <code className="bg-amber-200/50 dark:bg-amber-800/50 px-1 rounded">/api/debug</code> for counts).
                     </div>

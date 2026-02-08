@@ -41,6 +41,17 @@ jobs:
           npm ci
           npm run build
 
+      - name: Write api-config.json into dist
+        working-directory: lab-trading-dashboard
+        run: |
+          node -e "
+          const fs = require('fs');
+          const url = process.env.API_BASE_URL || '';
+          fs.writeFileSync('dist/api-config.json', JSON.stringify({ apiBaseUrl: url }));
+          "
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+
       - name: Deploy to GitHub Pages (gh-pages branch)
         uses: peaceiris/actions-gh-pages@v4
         with:
