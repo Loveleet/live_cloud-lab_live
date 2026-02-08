@@ -10,8 +10,9 @@ const CLOUD_API = "http://150.241.244.130:10000";
 function getApiBaseUrl() {
   let base = import.meta.env.VITE_API_BASE_URL;
   if (base !== undefined && base !== "") {
-    // If page is HTTPS, force API to HTTPS to avoid mixed-content block
+    // If page is HTTPS, force API to HTTPS to avoid mixed-content block (unless it's raw IP - no valid cert)
     if (typeof window !== "undefined" && window.location?.protocol === "https:" && base.startsWith("http://")) {
+      if (base.startsWith("http://150.241.244.130")) return ""; // raw IP over HTTPS causes ERR_SSL_PROTOCOL_ERROR
       base = "https://" + base.slice(7);
     }
     return base;
@@ -24,9 +25,10 @@ function getApiBaseUrl() {
     const o = window.location.origin;
     if (o.startsWith("http://150.241.244.130") || o.startsWith("http://localhost") || o.startsWith("https://localhost")) return "";
   }
-  // Production: use cloud server; HTTPS page must use HTTPS API
+  // Production on HTTPS (e.g. GitHub Pages): never use raw IP with https (no valid cert → ERR_SSL_PROTOCOL_ERROR).
+  // Set API_BASE_URL secret in GitHub to your Cloudflare Tunnel URL (e.g. https://xxx.trycloudflare.com) and redeploy.
   if (typeof window !== "undefined" && window.location?.protocol === "https:") {
-    return "https://150.241.244.130:10000";
+    return "";
   }
   return CLOUD_API;
 }

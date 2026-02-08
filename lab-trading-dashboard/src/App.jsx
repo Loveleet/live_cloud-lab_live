@@ -1387,6 +1387,17 @@ useEffect(() => {
               <div className={`flex-1 min-h-screen transition-all duration-300 ${isSidebarOpen ? "ml-64" : "ml-20"} overflow-hidden relative bg-[#f5f6fa] dark:bg-black`}>
                 {/* Main content area, no extra margin-top */}
                 <div className="p-8 pt-2 overflow-x-auto">
+                  {typeof window !== "undefined" && window.location?.hostname?.includes("github.io") && !API_BASE_URL && (
+                    <div className="mb-4 p-4 rounded-lg bg-blue-100 dark:bg-blue-900/40 border border-blue-400 dark:border-blue-600 text-blue-900 dark:text-blue-100 text-sm">
+                      <strong className="block mb-2">API not configured for GitHub Pages</strong>
+                      <p className="mb-2">To load data here, use a Cloudflare Tunnel so the API is reachable over HTTPS, then:</p>
+                      <ol className="list-decimal list-inside space-y-1 mt-2 text-xs">
+                        <li>Run the tunnel (e.g. <code className="bg-blue-200/60 dark:bg-blue-800/60 px-1 rounded">./scripts/run-tunnel-from-laptop.sh</code> or on cloud) and copy the <code className="bg-blue-200/60 dark:bg-blue-800/60 px-1 rounded">https://xxx.trycloudflare.com</code> URL.</li>
+                        <li>GitHub repo → <strong>Settings → Secrets and variables → Actions</strong> → add or edit <code className="bg-blue-200/60 dark:bg-blue-800/60 px-1 rounded">API_BASE_URL</code> = that URL (no trailing slash).</li>
+                        <li><strong>Actions</strong> → &quot;Deploy frontend to GitHub Pages&quot; → <strong>Run workflow</strong>. After it finishes, hard-refresh this page.</li>
+                      </ol>
+                    </div>
+                  )}
                   {demoDataHint && (
                     <div className="mb-4 p-4 rounded-lg bg-orange-100 dark:bg-orange-900/40 border border-orange-400 dark:border-orange-600 text-orange-900 dark:text-orange-100 text-sm">
                       <strong className="block mb-2">Get real data on this cloud site</strong>
@@ -1398,7 +1409,7 @@ useEffect(() => {
                       </ol>
                     </div>
                   )}
-                  {Array.isArray(tradeData) && tradeData.length === 0 && !demoDataHint && (
+                  {Array.isArray(tradeData) && tradeData.length === 0 && !demoDataHint && !(typeof window !== "undefined" && window.location?.hostname?.includes("github.io") && !API_BASE_URL) && (
                     <div className="mb-4 p-3 rounded-lg bg-amber-100 dark:bg-amber-900/30 border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200 text-sm">
                       <strong>No trade records in database.</strong> Table <code className="bg-amber-200/50 dark:bg-amber-800/50 px-1 rounded">alltraderecords</code> is empty. Machines and pairstatus are loading from the same DB. To see trades, add data or copy the database (see docs or <code className="bg-amber-200/50 dark:bg-amber-800/50 px-1 rounded">/api/debug</code> for counts).
                     </div>
