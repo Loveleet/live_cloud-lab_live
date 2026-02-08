@@ -1403,11 +1403,11 @@ useEffect(() => {
                   {typeof window !== "undefined" && window.location?.hostname?.includes("github.io") && !API_BASE_URL && (
                     <div className="mb-4 p-4 rounded-lg bg-blue-100 dark:bg-blue-900/40 border border-blue-400 dark:border-blue-600 text-blue-900 dark:text-blue-100 text-sm">
                       <strong className="block mb-2">API not configured for GitHub Pages</strong>
-                      <p className="mb-2">To load data here, use a Cloudflare Tunnel so the API is reachable over HTTPS, then:</p>
+                      <p className="mb-2">To load data here, expose your API over HTTPS (e.g. Cloudflare Tunnel), then:</p>
                       <ol className="list-decimal list-inside space-y-1 mt-2 text-xs">
-                        <li>Run the tunnel (e.g. <code className="bg-blue-200/60 dark:bg-blue-800/60 px-1 rounded">./scripts/run-tunnel-from-laptop.sh</code> or on cloud) and copy the <code className="bg-blue-200/60 dark:bg-blue-800/60 px-1 rounded">https://xxx.trycloudflare.com</code> URL.</li>
-                        <li>GitHub repo → <strong>Settings → Secrets and variables → Actions</strong> → add or edit <code className="bg-blue-200/60 dark:bg-blue-800/60 px-1 rounded">API_BASE_URL</code> = that URL (no trailing slash).</li>
-                        <li><strong>Actions</strong> → &quot;Deploy frontend to GitHub Pages&quot; → <strong>Run workflow</strong>. After it finishes, hard-refresh this page.</li>
+                        <li>From laptop: <code className="bg-blue-200/60 dark:bg-blue-800/60 px-1 rounded">./scripts/run-tunnel-from-laptop.sh</code> — or on the cloud server: <code className="bg-blue-200/60 dark:bg-blue-800/60 px-1 rounded">./scripts/start-https-tunnel-for-pages.sh</code>. Copy the <code className="bg-blue-200/60 dark:bg-blue-800/60 px-1 rounded">https://xxx.trycloudflare.com</code> URL.</li>
+                        <li>Add secret: <a href="https://github.com/Loveleet/lab_live/settings/secrets/actions" target="_blank" rel="noopener noreferrer" className="underline font-medium">Settings → Secrets and variables → Actions</a> → <code className="bg-blue-200/60 dark:bg-blue-800/60 px-1 rounded">API_BASE_URL</code> = that URL (no trailing slash).</li>
+                        <li><a href="https://github.com/Loveleet/lab_live/actions/workflows/deploy-frontend-pages.yml" target="_blank" rel="noopener noreferrer" className="underline font-medium">Run &quot;Deploy frontend to GitHub Pages&quot;</a>, then hard-refresh this page.</li>
                       </ol>
                     </div>
                   )}
