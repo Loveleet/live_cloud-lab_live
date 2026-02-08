@@ -39,15 +39,24 @@ function loadRuntimeApiConfig() {
   const path = (basePath ? basePath + "/" : "") + "api-config.json";
   const url = new URL(path, window.location.origin).href;
   const fetchUrl = url + (url.includes("?") ? "&" : "?") + "t=" + Date.now();
+  if (window.location?.hostname?.includes("github.io")) console.log("[LAB] Fetching api-config.json:", url);
   return fetch(fetchUrl)
-    .then((res) => (res.ok ? res.json() : null))
+    .then((res) => {
+      if (window.location?.hostname?.includes("github.io") && !res.ok) {
+        console.log("[LAB] api-config.json not found (", res.status, "). Set API_BASE_URL secret and run Deploy frontend to GitHub Pages.");
+      }
+      return res.ok ? res.json() : null;
+    })
     .then((j) => {
       if (j && typeof j.apiBaseUrl === "string") {
         runtimeApiBaseUrl = j.apiBaseUrl.replace(/\/$/, "");
+        if (window.location?.hostname?.includes("github.io")) console.log("[LAB] api-config.json loaded, API base:", runtimeApiBaseUrl);
         window.dispatchEvent(new CustomEvent("api-config-loaded"));
       }
     })
-    .catch(() => {});
+    .catch(() => {
+      if (window.location?.hostname?.includes("github.io")) console.log("[LAB] api-config.json fetch failed. Set API_BASE_URL secret and run Deploy workflow.");
+    });
 }
 
 if (typeof window !== "undefined") loadRuntimeApiConfig();
