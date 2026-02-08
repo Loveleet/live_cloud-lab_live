@@ -52,6 +52,10 @@ jobs:
         env:
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
 
+      - name: Add 404.html for SPA client-side routes
+        working-directory: lab-trading-dashboard
+        run: cp dist/index.html dist/404.html
+
       - name: Deploy to GitHub Pages (gh-pages branch)
         uses: peaceiris/actions-gh-pages@v4
         with:
