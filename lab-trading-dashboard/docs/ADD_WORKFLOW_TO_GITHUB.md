@@ -6,7 +6,7 @@ If **Actions** always sends you to the "Get started" / new workflow page, the re
 
 ## Option A: Create the file on GitHub (no terminal)
 
-1. Go to **https://github.com/Loveleet/lab_anish**
+1. Go to **https://github.com/Loveleet/lab_live**
 2. Switch to your branch (e.g. **lab_live**) using the branch dropdown.
 3. Click **Add file** → **Create new file**.
 4. In the path/name box type exactly:  
@@ -87,14 +87,14 @@ jobs:
 
 ## Option B: Push from your machine
 
-If this project folder is the same repo as Loveleet/lab_anish:
+If this project folder is the same repo as Loveleet/lab_live:
 
 ```bash
 cd "/Volumes/Loveleet /Work/Binance/lab_live/lab_live/lab-trading-dashboard"
 git remote -v
 ```
 
-If you see `origin` pointing to `.../Loveleet/lab_anish.git` (or lab_live), then:
+If you see `origin` pointing to `.../Loveleet/lab_live.git` (or lab_live), then:
 
 ```bash
 git add .github/workflows/deploy-frontend-pages.yml

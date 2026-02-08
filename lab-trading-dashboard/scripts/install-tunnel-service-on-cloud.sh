@@ -33,5 +33,5 @@ SSHPASS="$DEPLOY_PASSWORD" sshpass -e ssh -o StrictHostKeyChecking=no "$DEPLOY_H
 "
 echo ""
 echo "→ If you see 'Tunnel URL: https://...' above, add that URL to GitHub:"
-echo "  https://github.com/Loveleet/lab_anish/settings/secrets/actions → API_BASE_URL"
+echo "  https://github.com/Loveleet/lab_live/settings/secrets/actions → API_BASE_URL"
 echo "Then run Actions → Deploy frontend to GitHub Pages. Laptop not needed after that."

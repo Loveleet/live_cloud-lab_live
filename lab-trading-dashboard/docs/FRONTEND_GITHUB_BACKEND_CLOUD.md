@@ -64,7 +64,7 @@ The workflow uses this when building the frontend so it calls your cloud API.
 The cloud server already allows:
 
 - `https://loveleet.github.io` (GitHub Pages)
-- `https://lab-anish.vercel.app`
+- `https://lab-live.vercel.app`
 
 If your GitHub username or Pages URL is different, add the origin on the **cloud** in `/etc/lab-trading-dashboard.env`:
 
@@ -94,7 +94,7 @@ sudo systemctl restart lab-trading-dashboard
 
 - **Use the app (recommended):**  
   `https://<your-github-username>.github.io/<repo-name>/`  
-  Example: `https://loveleet.github.io/lab_anish/`
+  Example: `https://loveleet.github.io/lab_live/`
 
 - **Backend API only:**  
   `http://150.241.244.130:10000`  

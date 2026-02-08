@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Run from your LAPTOP. SSHs to the cloud, starts the HTTPS tunnel, and prints the URL
-# to add to GitHub secret API_BASE_URL so loveleet.github.io/lab_anish/ can load data.
+# to add to GitHub secret API_BASE_URL so loveleet.github.io/lab_live/ can load data.
 #
 # Usage: ./scripts/run-tunnel-from-laptop.sh
 # Requires: .env with DEPLOY_HOST and DEPLOY_PASSWORD
@@ -41,11 +41,11 @@ fi
 echo "=============================================="
 echo "Tunnel is running. Add this to GitHub:"
 echo ""
-echo "  1. Open: https://github.com/Loveleet/lab_anish/settings/secrets/actions"
+echo "  1. Open: https://github.com/Loveleet/lab_live/settings/secrets/actions"
 echo "  2. New repository secret (or edit API_BASE_URL)"
 echo "     Name:  API_BASE_URL"
 echo "     Value: $URL"
 echo ""
 echo "  3. Actions → Deploy frontend to GitHub Pages → Run workflow (branch: lab_live)"
-echo "  4. When green, open https://loveleet.github.io/lab_anish/ and hard-refresh"
+echo "  4. When green, open https://loveleet.github.io/lab_live/ and hard-refresh"
 echo "=============================================="

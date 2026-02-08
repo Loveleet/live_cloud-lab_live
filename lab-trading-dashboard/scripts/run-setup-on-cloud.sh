@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Run from your laptop: copies setup script to the server and runs it there.
 # Requires in .env:  DEPLOY_HOST=ubuntu@YOUR_SERVER_IP
-# Optional in .env: REPO_URL=https://github.com/Loveleet/lab_anish.git
+# Optional in .env: REPO_URL=https://github.com/Loveleet/lab_live.git
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -11,7 +11,7 @@ if [ -f .env ]; then
   . ./.env
   set +a
 fi
-REPO_URL="${REPO_URL:-https://github.com/Loveleet/lab_anish.git}"
+REPO_URL="${REPO_URL:-https://github.com/Loveleet/lab_live.git}"
 
 if [ -z "${DEPLOY_HOST:-}" ]; then
   echo "Add your server to .env first:"

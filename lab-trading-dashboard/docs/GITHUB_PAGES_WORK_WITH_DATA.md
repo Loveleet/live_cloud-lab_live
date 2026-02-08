@@ -1,6 +1,6 @@
 # Make GitHub Pages work with data
 
-To have **https://loveleet.github.io/lab_anish/** show real data (not just the UI), the API must be reachable over **HTTPS**. Use a Cloudflare Tunnel so you don’t need a domain or nginx.
+To have **https://loveleet.github.io/lab_live/** show real data (not just the UI), the API must be reachable over **HTTPS**. Use a Cloudflare Tunnel so you don’t need a domain or nginx.
 
 ---
 
@@ -8,7 +8,7 @@ To have **https://loveleet.github.io/lab_anish/** show real data (not just the U
 
 **Already on the cloud:** `gh` is installed; `GH_TOKEN=` is in `/etc/lab-trading-dashboard.env`. To enable auto-update:
 
-1. **Create a token:** https://github.com/settings/tokens → Generate new token (classic) → check **repo** (or fine-grained: Actions secrets read/write for Loveleet/lab_anish).
+1. **Create a token:** https://github.com/settings/tokens → Generate new token (classic) → check **repo** (or fine-grained: Actions secrets read/write for Loveleet/lab_live).
 
 2. **Set it on the cloud** (replace `ghp_YourTokenHere` with your token). Use `#` as delimiter so the token does not break sed:
    ```bash
@@ -62,7 +62,7 @@ cloudflared tunnel --url http://localhost:10000
 
 **Or get current URL from the cloud:** http://150.241.244.130:10000/api/tunnel-url
 
-1. Open **https://github.com/Loveleet/lab_anish** → **Settings** → **Secrets and variables** → **Actions**.
+1. Open **https://github.com/Loveleet/lab_live** → **Settings** → **Secrets and variables** → **Actions**.
 2. Click **New repository secret** (or edit existing).
 3. **Name:** `API_BASE_URL`
 4. **Value:** the URL you copied, e.g. `https://abc-xyz-123.trycloudflare.com` (no trailing slash).
@@ -83,7 +83,7 @@ Wait for the workflow to finish (green).
 
 ## Step 4: Open the dashboard
 
-Open **https://loveleet.github.io/lab_anish/** and do a hard refresh (Ctrl+Shift+R / Cmd+Shift+R). Data should load.
+Open **https://loveleet.github.io/lab_live/** and do a hard refresh (Ctrl+Shift+R / Cmd+Shift+R). Data should load.
 
 ---
 

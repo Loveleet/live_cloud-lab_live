@@ -1,6 +1,6 @@
 # GitHub Pages + Cloud API: HTTPS required
 
-When you open the dashboard at **https://loveleet.github.io/lab_anish/** (HTTPS), the browser only allows requests to **HTTPS** URLs. Requests to **http://150.241.244.130:10000** are blocked (mixed content).
+When you open the dashboard at **https://loveleet.github.io/lab_live/** (HTTPS), the browser only allows requests to **HTTPS** URLs. Requests to **http://150.241.244.130:10000** are blocked (mixed content).
 
 So for data to load on GitHub Pages, your **cloud API must be reachable over HTTPS**.
 
@@ -23,7 +23,7 @@ Open **http://150.241.244.130:10000** in the browser. The frontend and API are s
    - GitHub repo → **Settings** → **Secrets and variables** → **Actions**
    - Add or edit **API_BASE_URL** = `https://your-cloud-domain-or-ip:443` (your real HTTPS API URL).
 
-3. **Redeploy** the frontend (push to `lab_live` or run the “Deploy frontend to GitHub Pages” workflow). The new build will use the HTTPS API URL and data should load on loveleet.github.io/lab_anish/.
+3. **Redeploy** the frontend (push to `lab_live` or run the “Deploy frontend to GitHub Pages” workflow). The new build will use the HTTPS API URL and data should load on loveleet.github.io/lab_live/.
 
 ---
 
@@ -32,4 +32,4 @@ Open **http://150.241.244.130:10000** in the browser. The frontend and API are s
 | Where you open the dashboard | API URL used        | What you need                    |
 |-----------------------------|---------------------|----------------------------------|
 | http://150.241.244.130:10000 | Same origin (no API base) | Nothing extra                    |
-| https://loveleet.github.io/lab_anish/ | HTTPS API           | Cloud API must be served over HTTPS |
+| https://loveleet.github.io/lab_live/ | HTTPS API           | Cloud API must be served over HTTPS |

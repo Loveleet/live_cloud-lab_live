@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Run this ON THE CLOUD SERVER (150.241.244.130) to expose the API over HTTPS
-# so https://loveleet.github.io/lab_anish/ can load data (no mixed-content block).
+# so https://loveleet.github.io/lab_live/ can load data (no mixed-content block).
 #
 # Usage on cloud: sudo bash start-https-tunnel-for-pages.sh
 # Then copy the https://xxx.trycloudflare.com URL into GitHub secret API_BASE_URL and redeploy.
