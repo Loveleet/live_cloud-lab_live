@@ -48,15 +48,17 @@ function loadRuntimeApiConfig() {
       return res.ok ? res.json() : null;
     })
     .then((j) => {
-      if (j && typeof j.apiBaseUrl === "string") {
-        const url = j.apiBaseUrl.replace(/\/$/, "").trim();
-        if (url) {
-          runtimeApiBaseUrl = url;
-          if (window.location?.hostname?.includes("github.io")) console.log("[LAB] api-config.json loaded, API base:", url);
-          window.dispatchEvent(new CustomEvent("api-config-loaded"));
-        } else if (window.location?.hostname?.includes("github.io")) {
-          console.log("[LAB] api-config.json has empty apiBaseUrl. Set API_BASE_URL secret and run Deploy or Update API config workflow.");
-        }
+      if (!j) return;
+      // Support both apiBaseUrl and tunnelUrl (e.g. from /api/tunnel-url)
+      const raw = typeof j.apiBaseUrl === "string" ? j.apiBaseUrl : (typeof j.tunnelUrl === "string" ? j.tunnelUrl : "");
+      const url = raw.replace(/\/$/, "").trim();
+      if (url) {
+        const changed = runtimeApiBaseUrl !== url;
+        runtimeApiBaseUrl = url;
+        if (window.location?.hostname?.includes("github.io")) console.log("[LAB] api-config.json loaded, API base:", url);
+        if (changed) window.dispatchEvent(new CustomEvent("api-config-loaded"));
+      } else if (window.location?.hostname?.includes("github.io")) {
+        console.log("[LAB] api-config.json has empty apiBaseUrl/tunnelUrl. Set API_BASE_URL secret and run Deploy or Update API config workflow.");
       }
     })
     .catch(() => {
@@ -64,7 +66,13 @@ function loadRuntimeApiConfig() {
     });
 }
 
-if (typeof window !== "undefined") loadRuntimeApiConfig();
+if (typeof window !== "undefined") {
+  loadRuntimeApiConfig();
+  // Re-fetch api-config.json every 2 min so open page picks up new tunnel URL after cloud restart (no refresh needed)
+  if (window.location?.hostname?.includes("github.io")) {
+    setInterval(loadRuntimeApiConfig, 2 * 60 * 1000);
+  }
+}
 
 /** Initial value; use getApiBaseUrl() for current value (updates after api-config.json loads). */
 export const API_BASE_URL = typeof window !== "undefined" ? getApiBaseUrl() : "";
