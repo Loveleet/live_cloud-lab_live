@@ -101,7 +101,7 @@ app.use("/logs", (req, res, next) => {
   express.static(currentLogPath)(req, res, next);
 });
 
-// ✅ Database Configuration — same as server copy.js / Render: 150.241.245.36, postgres, IndiaNepal1-, labdb2, ssl: false
+// ✅ Database Configuration — same as server copy.js / Render: 150.241.245.36, postgres, IndiaNepal1-, olab, ssl: false
 function buildDbConfig() {
   const dbHost = process.env.DB_HOST || 'localhost';
   const host = (dbHost === '150.241.244.130' ? 'localhost' : dbHost);
@@ -111,7 +111,7 @@ function buildDbConfig() {
     port: parseInt(process.env.DB_PORT || '5432', 10),
     user: process.env.DB_USER || 'postgres',
     password: process.env.DB_PASSWORD || (isRemoteDb ? 'IndiaNepal1-' : ''),
-    database: process.env.DB_NAME || 'labdb2',
+    database: process.env.DB_NAME || 'olab',
     connectionTimeoutMillis: isRemoteDb ? 30000 : 10000,
     idleTimeoutMillis: 30000,
     max: isRemoteDb ? 20 : 10,
@@ -414,6 +414,25 @@ app.get('/api/klines', async (req, res) => {
     res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.toString() });
+  }
+});
+
+// ✅ Proxy to Python CalculateSignals API (run python/api_signals.py; set PYTHON_SIGNALS_URL=http://localhost:5001)
+app.post("/api/calculate-signals", async (req, res) => {
+  const pythonUrl = process.env.PYTHON_SIGNALS_URL || "http://localhost:5001";
+  try {
+    console.log("[calculate-signals] Request body:", JSON.stringify(req.body));
+    const timeoutMs = Number(process.env.CALCULATE_SIGNALS_TIMEOUT_MS) || 300000; // 5 min default (4 intervals can be slow)
+    const { data, status } = await axios.post(`${pythonUrl}/api/calculate-signals`, req.body, {
+      headers: { "Content-Type": "application/json" },
+      timeout: timeoutMs,
+      validateStatus: () => true,
+    });
+    console.log("[calculate-signals] Python API response:", JSON.stringify(data, null, 2));
+    res.status(status || 200).json(data);
+  } catch (err) {
+    console.error("[calculate-signals] Proxy error:", err.message);
+    res.status(502).json({ ok: false, message: err.message || "Python signals service unavailable" });
   }
 });
 

@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Play, Settings, Square, Shield, Crosshair, LayoutGrid } from "lucide-react";
 import { formatTradeData } from "./TableView";
 import { LogoutButton } from "../auth";
-import { API_BASE_URL } from "../config";
+import { API_BASE_URL, api } from "../config";
 
 const REFRESH_INTERVAL_KEY = "refresh_app_main_intervalSec";
 
@@ -54,6 +54,61 @@ const INFO_FIELD_ORDER_KEY = "singleTradeLiveView_infoFieldOrder";
 const SECTION_ORDER_KEY = "singleTradeLiveView_sectionOrder";
 const SECTION_IDS = ["information", "binanceData", "chart"];
 const SECTION_LABELS = { information: "Information", binanceData: "Binance Data", chart: "Chart" };
+
+// Signals grid: only these rows (label = display, key = API response key)
+const SIGNAL_ROWS = [
+  { label: "INSTITUTIONAL_SIGNAL", key: "INSTITUTIONAL_SIGNAL" },
+  { label: "BB FLAT", key: "bb_flat_market" },
+  { label: "BB FLAT SIGNAL", key: "bb_flat_signal" },
+  { label: "RSI_9", key: "RSI_9" },
+  { label: "Divergence", key: "Divergence" },
+  { label: "DIVERGEN_SIGNAL_LIVE", key: "DIVERGEN_SIGNAL_LIVE" },
+  { label: "RSI_DIVERGENCE_LIVE", key: "RSI_DIVERGENCE_LIVE" },
+  { label: "TAKEACTION", key: "TAKEACTION" },
+  { label: "CCI Exit Cross", key: "CCI_Exit_Cross" },
+  { label: "MACD Color Signal", key: "macd_color_signal" },
+  { label: "CCI Entry State 100", key: "CCI_Entry_State_100" },
+  { label: "CCI SMA 100", key: "CCI_SMA_100" },
+  { label: "CCI Entry State 9", key: "CCI_Entry_State_9" },
+  { label: "CCI SMA 9", key: "CCI_SMA_9" },
+  { label: "cci_value_100", key: "cci_value_100" },
+  { label: "cci_value_9", key: "cci_value_9" },
+  { label: "Lower MACD Color Signa", key: "lower_MACD_Color_Signal" },
+  { label: "Andean Oscillator", key: "Andean_Oscillator" },
+  { label: "Candle Henkin Color", key: "Candle_Henkin_Color" },
+  { label: "Candle Regular Color", key: "color" },
+  { label: "EMA 5 8 Cross", key: "EMA_5_8_Cross" },
+  { label: "ZLEMA Bullish Entry", key: "zlema_bullish_entry" },
+  { label: "ZLEMA Bearish Entry", key: "zlema_bearish_entry" },
+  { label: "Volume Ratio", key: "Volume_Ratio" },
+  { label: "OB_SIGNAL", key: "OB_SIGNAL" },
+  { label: "candle_pattern_signal", key: "candle_pattern_signal" },
+  { label: "Henkin Candle Pattern Signal", key: "Henkin_Candle_Pattern_Signal" },
+  { label: "TDFI 2 EMA", key: "TDFI_2_EMA" },
+  { label: "TDFI State", key: "TDFI_State" },
+  { label: "Two Pole MACD CrossOver", key: "two_pole_MACD_Cross_Up" },
+  { label: "Total Change", key: "Total_Change" },
+  { label: "BBW", key: "BBW" },
+  { label: "BBW_Increasing", key: "BBW_Increasing" },
+  { label: "BREAKOUT_SIGNAL", key: "BREAKOUT_SIGNAL" },
+  { label: "FOLLOW_INST_BUY_OK", key: "FOLLOW_INST_BUY_OK" },
+  { label: "FOLLOW_INST_SELL_OK", key: "FOLLOW_INST_SELL_OK" },
+  { label: "breakout_entry", key: "breakout_entry" },
+  { label: "ema_price_trend_signal", key: "ema_price_trend_signal" },
+  { label: "ema_trend_100_14", key: "ema_trend_100_14" },
+  { label: "exit_long_price_action", key: "exit_long_raw" },
+  { label: "exit_short_price_action", key: "exit_short_raw" },
+  { label: "price_trend_direction", key: "price_trend_direction" },
+  { label: "stoch_7_3_3_cross_buy", key: "stoch_7_3_3_cross_buy" },
+  { label: "stoch_7_3_3_cross_sell", key: "stoch_7_3_3_cross_sell" },
+  { label: "stoch_7_3_3_overbought", key: "stoch_7_3_3_overbought" },
+  { label: "stoch_7_3_3_oversold", key: "stoch_7_3_3_oversold" },
+  { label: "price_vs_ha_open", key: "price_vs_ha_open" },
+  { label: "swing_high", key: "swing_high" },
+  { label: "swing_low", key: "swing_low" },
+  { label: "swing_high_zone", key: "swing_high_zone" },
+  { label: "volume_increasing", key: "volume_increasing" },
+];
 
 // Demo: replace with real auth; for now accept this or any non-empty for testing
 const DEMO_PASSWORD = "demo123";
@@ -810,6 +865,35 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
     };
   }, [uniqueId]);
 
+  // Call Python CalculateSignals(symbol, interval, candle) every 5 minutes for current trade pair
+  const tradePair = rawTrade?.pair || stripHtml(row.Pair) || "";
+  const signalSymbol = getRobustSymbol(tradePair);
+  const [signalsData, setSignalsData] = useState(null);
+  const SIGNAL_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+  useEffect(() => {
+    if (!signalSymbol) return;
+    const callCalculateSignals = async () => {
+      try {
+        const res = await fetch(api("/api/calculate-signals"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ symbol: signalSymbol, candle: "regular" }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          console.warn("[CalculateSignals]", data?.message || res.statusText);
+          return;
+        }
+        if (data?.ok && data?.intervals) setSignalsData(data);
+      } catch (e) {
+        console.warn("[CalculateSignals]", e?.message || e);
+      }
+    };
+    callCalculateSignals(); // run once on mount / when pair changes
+    const id = setInterval(callCalculateSignals, SIGNAL_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [signalSymbol]);
+
   const [fieldOrder, setFieldOrder] = useState(() => {
     try {
       const v = localStorage.getItem(INFO_FIELD_ORDER_KEY);
@@ -909,34 +993,61 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
     } catch {}
   }, [sectionOrder]);
 
-  const tradePair = rawTrade?.pair || stripHtml(row.Pair) || "";
   const chartSize = { width: 500, height: chartHeight };
 
-  // Action handlers: replace with API calls later (e.g. fetch(API_BASE_URL + '/api/execute', ...))
+  // Call Python backend API (backend must expose these endpoints, e.g. Flask/FastAPI)
+  const callPythonApi = useCallback(async (endpoint, body) => {
+    const res = await fetch(api(endpoint), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ message: res.statusText }));
+      throw new Error(err.message || err.detail || `API error ${res.status}`);
+    }
+    return res.json().catch(() => ({}));
+  }, []);
+
   const handleExecute = useCallback(async ({ password, amount }) => {
-    // TODO: await fetch(API_BASE_URL + '/api/execute', { method: 'POST', body: JSON.stringify({ unique_id: rawTrade?.unique_id, amount, password }) });
-    await new Promise((r) => setTimeout(r, 300));
-  }, [rawTrade?.unique_id]);
+    await callPythonApi("/api/execute", {
+      unique_id: rawTrade?.unique_id,
+      amount: amount?.trim(),
+      password,
+    });
+  }, [rawTrade?.unique_id, callPythonApi]);
   const handleEndTrade = useCallback(async ({ password }) => {
-    // TODO: await fetch(API_BASE_URL + '/api/end-trade', { method: 'POST', body: JSON.stringify({ unique_id: rawTrade?.unique_id, password }) });
-    await new Promise((r) => setTimeout(r, 300));
-  }, [rawTrade?.unique_id]);
+    await callPythonApi("/api/end-trade", {
+      unique_id: rawTrade?.unique_id,
+      password,
+    });
+  }, [rawTrade?.unique_id, callPythonApi]);
   const handleHedge = useCallback(async ({ password }) => {
-    // TODO: await fetch(API_BASE_URL + '/api/hedge', { method: 'POST', body: JSON.stringify({ unique_id: rawTrade?.unique_id, password }) });
-    await new Promise((r) => setTimeout(r, 300));
-  }, [rawTrade?.unique_id]);
+    await callPythonApi("/api/hedge", {
+      unique_id: rawTrade?.unique_id,
+      password,
+    });
+  }, [rawTrade?.unique_id, callPythonApi]);
   const handleSetStopPrice = useCallback(async ({ password, extraValue }) => {
-    // TODO: await fetch(API_BASE_URL + '/api/stop-price', { method: 'POST', body: JSON.stringify({ unique_id: rawTrade?.unique_id, stop_price: extraValue, password }) });
-    await new Promise((r) => setTimeout(r, 300));
-  }, [rawTrade?.unique_id]);
+    await callPythonApi("/api/stop-price", {
+      unique_id: rawTrade?.unique_id,
+      stop_price: extraValue,
+      password,
+    });
+  }, [rawTrade?.unique_id, callPythonApi]);
   const handleAddInvestment = useCallback(async ({ password, amount }) => {
-    // TODO: await fetch(API_BASE_URL + '/api/add-investment', { method: 'POST', body: JSON.stringify({ unique_id: rawTrade?.unique_id, amount, password }) });
-    await new Promise((r) => setTimeout(r, 300));
-  }, [rawTrade?.unique_id]);
+    await callPythonApi("/api/add-investment", {
+      unique_id: rawTrade?.unique_id,
+      amount: amount?.trim(),
+      password,
+    });
+  }, [rawTrade?.unique_id, callPythonApi]);
   const handleClear = useCallback(async ({ password }) => {
-    // TODO: await fetch(API_BASE_URL + '/api/clear', { method: 'POST', body: JSON.stringify({ unique_id: rawTrade?.unique_id, password }) });
-    await new Promise((r) => setTimeout(r, 300));
-  }, [rawTrade?.unique_id]);
+    await callPythonApi("/api/clear", {
+      unique_id: rawTrade?.unique_id,
+      password,
+    });
+  }, [rawTrade?.unique_id, callPythonApi]);
 
   const getConfirmHandler = useCallback((type) => {
     switch (type) {
@@ -1008,18 +1119,68 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
           </div>
           <div className="flex min-h-0 p-3 sm:p-4 gap-0 flex-shrink-0" style={{ height: infoGridHeight }}>
             <div
-              className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl flex flex-col items-center justify-center text-gray-500 bg-gray-50 dark:bg-[#0d0d0d] transition-all overflow-hidden flex-shrink-0"
-              style={{ width: `${infoSplitPercent}%`, minHeight: infoLeftHeight, fontSize: `${(zoomInfoLeft / 100) * 14}px` }}
+              className="border border-gray-300 dark:border-gray-600 rounded-xl flex flex-col overflow-hidden flex-shrink-0 bg-white dark:bg-[#0d0d0d]"
+              style={{ width: `${infoSplitPercent}%`, minHeight: infoLeftHeight, fontSize: `${(zoomInfoLeft / 100) * 11}px` }}
             >
-              <div className="flex items-center gap-2 mb-2 flex-wrap justify-center">
-                <span>(Empty — for future use)</span>
+              <div className="flex items-center gap-2 p-1.5 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
                 <ZoomControls
                   onDecrease={zoomOutInfoLeft}
                   onIncrease={zoomInInfoLeft}
                   current={zoomInfoLeft}
-                  label="Zoom left"
-                  className="min-w-[32px] min-h-[32px] flex items-center justify-center rounded-lg bg-gray-300 hover:bg-gray-400 dark:bg-gray-600 dark:hover:bg-gray-500 disabled:opacity-40 text-gray-800 dark:text-white text-xs font-bold"
+                  label="Zoom"
+                  className="min-w-[28px] min-h-[28px] flex items-center justify-center rounded bg-gray-300 hover:bg-gray-400 dark:bg-gray-600 dark:hover:bg-gray-500 disabled:opacity-40 text-gray-800 dark:text-white text-xs font-bold"
                 />
+                <span className="text-xs font-semibold text-gray-600 dark:text-gray-400 truncate">
+                  {signalsData?.symbol || signalSymbol || "—"} signals
+                </span>
+              </div>
+              <div className="flex-1 min-h-0 overflow-auto">
+                {signalsData?.ok && signalsData?.intervals ? (
+                  (() => {
+                    const INTERVALS = ["5m", "15m", "1h", "4h"];
+                    const ROW_LABELS = ["prior row", "prev row", "current_row"];
+                    return (
+                      <table className="w-full border-collapse text-[10px] sm:text-xs">
+                        <thead className="sticky top-0 bg-gray-100 dark:bg-gray-800 z-10">
+                          <tr>
+                            <th className="border border-gray-300 dark:border-gray-600 px-1 py-0.5 text-left font-semibold text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[80px]">Signal</th>
+                            {INTERVALS.flatMap((iv) =>
+                              ROW_LABELS.map((label) => (
+                                <th key={`${iv}-${label}`} className="border border-gray-300 dark:border-gray-600 px-0.5 py-0.5 text-center font-medium text-gray-600 dark:text-gray-400 whitespace-nowrap">
+                                  {iv} {label}
+                                </th>
+                              ))
+                            )}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {SIGNAL_ROWS.map(({ label, key }) => (
+                            <tr key={key} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                              <td className="border border-gray-200 dark:border-gray-600 px-1 py-0.5 font-medium text-teal-700 dark:text-teal-400 whitespace-nowrap truncate max-w-[100px]" title={label}>
+                                {label}
+                              </td>
+                              {INTERVALS.flatMap((iv) => {
+                                const summary = signalsData.intervals[iv]?.summary;
+                                const rows = Array.isArray(summary) ? summary : [];
+                                return [0, 1, 2].map((rowIdx) => {
+                                  const v = rows[rowIdx]?.[key];
+                                  const str = v != null ? (typeof v === "number" ? (Number.isInteger(v) ? String(v) : v.toFixed?.(4) ?? String(v)) : String(v)) : "—";
+                                  return (
+                                    <td key={`${iv}-${rowIdx}`} className="border border-gray-200 dark:border-gray-600 px-0.5 py-0.5 text-center text-gray-800 dark:text-gray-200 truncate max-w-[60px]" title={str}>
+                                      {str}
+                                    </td>
+                                  );
+                                });
+                              })}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    );
+                  })()
+                ) : (
+                  <div className="flex items-center justify-center h-full text-gray-500 dark:text-gray-400 text-center p-2">Loading signals…</div>
+                )}
               </div>
             </div>
             <WidthDragger leftPercent={infoSplitPercent} onChange={setInfoSplitPercent} min={20} max={80} />

@@ -57,7 +57,7 @@ const dbConfig = {
   password: process.env.DB_PASSWORD || "IndiaNepal1-",
   host: process.env.DB_HOST || "150.241.245.36",
   port: parseInt(process.env.DB_PORT) || 5432,
-  database: process.env.DB_NAME || "labdb2",
+  database: process.env.DB_NAME || "olab",
   ssl: false, // Disable SSL for direct connection
   connectionTimeoutMillis: 30000, // 30 second timeout
   idleTimeoutMillis: 30000,

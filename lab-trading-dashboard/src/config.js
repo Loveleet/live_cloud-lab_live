@@ -5,6 +5,7 @@ const CLOUD_API = "http://150.241.244.130:10000";
  * API base URL for backend. Empty = same origin.
  * When the page is HTTPS (e.g. GitHub Pages), the API URL must be HTTPS too (mixed content is blocked).
  * Local dev (npm run dev): uses VITE_API_BASE_URL from .env.local if set, else cloud so you get real data.
+ * To use the cloud API instead of local: set VITE_API_BASE_URL=http://150.241.244.130:10000 in .env.local
  */
 function getApiBaseUrl() {
   let base = import.meta.env.VITE_API_BASE_URL;
@@ -15,9 +16,9 @@ function getApiBaseUrl() {
     }
     return base;
   }
-  // Development (run locally): use cloud so laptop gets real data; override with .env.local if needed
+  // Development: default to local server (server-local.js on 3001) for localhost testing
   if (import.meta.env.MODE !== "production") {
-    return CLOUD_API;
+    return "http://localhost:3001";
   }
   if (typeof window !== "undefined" && window.location?.origin) {
     const o = window.location.origin;

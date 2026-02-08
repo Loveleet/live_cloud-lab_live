@@ -606,6 +606,44 @@ const LiveTradeViewPage = () => {
       .catch(() => setTrades([]));
   }, [uid]); // Add uid as dependency to refetch when uid changes
 
+  // Call Python CalculateSignals every 5 minutes for current trade pair (same as SingleTradeLiveView)
+  const getRobustSymbol = (pair) => {
+    if (!pair) return '';
+    let s = String(pair).replace(/<[^>]+>/g, '').replace(/\s+/g, '').replace(/[^A-Z0-9]/gi, '').toUpperCase();
+    if (s.startsWith('BINANCE')) s = s.slice(7);
+    s = s.replace(/PERPETUALCONTRACT|PERP|CHART/gi, '').replace(/\d{6,}$/, '');
+    return s || '';
+  };
+  const signalSymbol = useMemo(() => {
+    const pair = trades[0]?.pair ?? trades[0]?.Pair ?? uid ?? '';
+    return getRobustSymbol(pair);
+  }, [trades, uid]);
+  const SIGNAL_INTERVAL_MS = 5 * 60 * 1000;
+  const [signalsData, setSignalsData] = useState(null);
+  useEffect(() => {
+    if (!signalSymbol) return;
+    const callCalculateSignals = async () => {
+      try {
+        const res = await fetch(api('/api/calculate-signals'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ symbol: signalSymbol, candle: 'regular' }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          console.warn('[LiveTradeViewPage] CalculateSignals:', data?.message || res.statusText);
+          return;
+        }
+        if (data?.ok && data?.intervals) setSignalsData(data);
+      } catch (e) {
+        console.warn('[LiveTradeViewPage] CalculateSignals:', e?.message || e);
+      }
+    };
+    callCalculateSignals();
+    const id = setInterval(callCalculateSignals, SIGNAL_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [signalSymbol]);
+
   // Bot event log data with pagination
   const [logs, setLogs] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
@@ -2654,6 +2692,75 @@ const LiveTradeViewPage = () => {
         height: '100vh',
         boxSizing: 'border-box'
       }}>
+      {/* Signals from Python API: 5m, 15m, 1h, 4h */}
+      {signalsData?.ok && signalsData?.intervals && (
+        <div style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: 12,
+          marginBottom: 16,
+          padding: 12,
+          background: darkMode ? '#1e293b' : '#f1f5f9',
+          borderRadius: 8,
+          border: darkMode ? '1px solid #334155' : '1px solid #e2e8f0',
+        }}>
+          {['5m', '15m', '1h', '4h'].map((interval) => {
+            const iv = signalsData.intervals[interval];
+            const summary = iv?.ok ? iv.summary : null;
+            const err = iv?.error || null;
+            return (
+              <div
+                key={interval}
+                style={{
+                  flex: '1 1 180px',
+                  minWidth: 160,
+                  padding: 12,
+                  background: darkMode ? '#0f172a' : '#fff',
+                  borderRadius: 6,
+                  border: darkMode ? '1px solid #475569' : '1px solid #e2e8f0',
+                  color: darkMode ? '#e2e8f0' : '#222',
+                  fontSize: 12,
+                }}
+              >
+                <div style={{ fontWeight: 700, marginBottom: 8, color: darkMode ? '#38bdf8' : '#0ea5e9' }}>
+                  {signalsData.symbol} — {interval}
+                </div>
+                {err && <div style={{ color: '#ef4444' }}>{err}</div>}
+                {summary && Array.isArray(summary) && summary.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {summary.map((row, rowIdx) => (
+                      <div key={rowIdx} style={{ borderBottom: rowIdx < summary.length - 1 ? (darkMode ? '1px solid #334155' : '1px solid #e2e8f0') : 'none', paddingBottom: 8 }}>
+                        <div style={{ fontWeight: 600, marginBottom: 4, fontSize: 11, opacity: 0.9 }}>Row {summary.length - rowIdx} (last {summary.length})</div>
+                        {typeof row === 'object' && row !== null && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            {Object.entries(row).filter(([k, v]) => v != null && k !== 'time').slice(0, 14).map(([key, value]) => (
+                              <div key={key} style={{ display: 'flex', justifyContent: 'space-between', gap: 6, fontSize: 11 }}>
+                                <span style={{ opacity: 0.8 }}>{key}</span>
+                                <span style={{ fontWeight: 500 }}>{typeof value === 'number' ? (Number.isInteger(value) ? value : value?.toFixed?.(4) ?? value) : String(value)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {summary && typeof summary === 'object' && !Array.isArray(summary) && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {Object.entries(summary).filter(([k, v]) => v != null && k !== 'time').slice(0, 12).map(([key, value]) => (
+                      <div key={key} style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                        <span style={{ opacity: 0.8 }}>{key}</span>
+                        <span style={{ fontWeight: 500 }}>{typeof value === 'number' ? (Number.isInteger(value) ? value : value?.toFixed?.(4) ?? value) : String(value)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {summary && typeof summary !== 'object' && !Array.isArray(summary) && <div>{String(summary)}</div>}
+              </div>
+            );
+          })}
+        </div>
+      )}
       <LiveTradeListViewComponent
         uid={uid}
         interval={interval}

@@ -12,7 +12,7 @@ const dbConfig = {
   password: process.env.PGPASSWORD || 'IndiaNepal1-',
   host: process.env.PGHOST || '150.241.244.130',
   port: parseInt(process.env.PGPORT || '5432', 10),
-  database: process.env.PGDATABASE || 'labdb2',
+  database: process.env.PGDATABASE || 'olab',
   ssl: (process.env.PGSSLMODE || 'require') !== 'disable' ? { rejectUnauthorized: false } : false,
   connectionTimeoutMillis: 30000,
   idleTimeoutMillis: 30000,
