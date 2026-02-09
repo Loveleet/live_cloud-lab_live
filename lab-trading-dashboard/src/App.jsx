@@ -23,7 +23,7 @@ import RefreshControls from './components/RefreshControls';
 import SuperTrendPanel from "./SuperTrendPanel";
 import TradeComparePage from "./components/TradeComparePage";
 import SoundSettings from "./components/SoundSettings";
-import { API_BASE_URL, getApiBaseUrl, api } from "./config";
+import { API_BASE_URL, getApiBaseUrl, api, loadRuntimeApiConfig } from "./config";
 
 // Animated SVG background for LAB title
 function AnimatedGraphBackground({ width = 400, height = 80, opacity = 0.4 }) {
@@ -131,6 +131,7 @@ const App = () => {
   const [tradeData, setTradeData] = useState([]);
   const [demoDataHint, setDemoDataHint] = useState(null); // when API returns _meta.demoData, show hint instead of demo rows
   const [apiBaseForBanner, setApiBaseForBanner] = useState(() => (typeof getApiBaseUrl === "function" ? getApiBaseUrl() : ""));
+  const [apiUnreachable, setApiUnreachable] = useState(false);
   const [clientData, setClientData] = useState([]);
   const [logData, setLogData] = useState([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -350,6 +351,7 @@ const [selectedIntervals, setSelectedIntervals] = useState(() => {
       return;
     }
     try {
+      setApiUnreachable(false);
       const tradeRes = await fetch(api("/api/trades"));
       const tradeJson = tradeRes.ok ? await tradeRes.json() : { trades: [] };
       const trades = Array.isArray(tradeJson.trades) ? tradeJson.trades : [];
@@ -419,6 +421,13 @@ const [selectedIntervals, setSelectedIntervals] = useState(() => {
     } catch (error) {
       setTradeData([]);
       setDemoDataHint(null);
+      // On GitHub Pages, tunnel URL may have changed (ERR_NAME_NOT_RESOLVED = old URL). Refetch api-config and retry.
+      if (typeof window !== "undefined" && window.location?.hostname?.includes("github.io") && getApiBaseUrl()) {
+        setApiUnreachable(true);
+        if (typeof loadRuntimeApiConfig === "function") {
+          loadRuntimeApiConfig().then(() => setTimeout(() => refreshAllData(), 4000));
+        }
+      }
     }
   }, [toMachineKey]);
 
@@ -1411,7 +1420,14 @@ useEffect(() => {
               <div className={`flex-1 min-h-screen transition-all duration-300 ${isSidebarOpen ? "ml-64" : "ml-20"} overflow-hidden relative bg-[#f5f6fa] dark:bg-black`}>
                 {/* Main content area, no extra margin-top */}
                 <div className="p-8 pt-2 overflow-x-auto">
-                  {typeof window !== "undefined" && window.location?.hostname?.includes("github.io") && !apiBaseForBanner && (
+                  {apiUnreachable && (
+                    <div className="mb-4 p-4 rounded-lg bg-amber-100 dark:bg-amber-900/40 border border-amber-400 dark:border-amber-600 text-amber-900 dark:text-amber-100 text-sm">
+                      <strong className="block mb-2">API unreachable (tunnel URL may have changed)</strong>
+                      <p className="mb-2">The current API URL could not be resolved (e.g. cloud restarted and got a new tunnel URL). The app will refetch the config and retry in a few seconds.</p>
+                      <p className="text-xs">If it still fails: on the cloud run the tunnel (<code className="bg-amber-200/60 dark:bg-amber-800/60 px-1 rounded">/opt/apps/lab-trading-dashboard/scripts/cron-tunnel-update.sh</code> or start cloudflared), wait 2–3 min, then <strong>hard-refresh this page</strong> (Ctrl+Shift+R).</p>
+                    </div>
+                  )}
+                  {typeof window !== "undefined" && window.location?.hostname?.includes("github.io") && !apiBaseForBanner && !apiUnreachable && (
                     <div className="mb-4 p-4 rounded-lg bg-blue-100 dark:bg-blue-900/40 border border-blue-400 dark:border-blue-600 text-blue-900 dark:text-blue-100 text-sm">
                       <strong className="block mb-2">API not configured for GitHub Pages</strong>
                       <p className="mb-2">To load data here, expose your API over HTTPS (e.g. Cloudflare Tunnel), then:</p>
