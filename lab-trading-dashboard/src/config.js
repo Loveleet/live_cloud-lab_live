@@ -39,6 +39,13 @@ function isCloudServerOrigin() {
 function getApiBaseUrl() {
   // When served from cloud server, always use same origin so /api/* hits this server (real olab data)
   if (isCloudServerOrigin()) return "";
+  
+  // On GitHub Pages, ALWAYS prefer runtime api-config.json over build-time URL (tunnel URL changes)
+  const isGitHubPages = typeof window !== "undefined" && window.location?.hostname?.includes("github.io");
+  if (isGitHubPages && runtimeApiBaseUrl) {
+    return runtimeApiBaseUrl; // Runtime config always wins on GitHub Pages
+  }
+  
   if (runtimeApiBaseUrl) return runtimeApiBaseUrl;
   return getBuildTimeDefault();
 }
@@ -86,13 +93,21 @@ function loadRuntimeApiConfig() {
       const raw = typeof j.apiBaseUrl === "string" ? j.apiBaseUrl : (typeof j.tunnelUrl === "string" ? j.tunnelUrl : "");
       const url = raw.replace(/\/$/, "").trim();
       if (url) {
-        const changed = runtimeApiBaseUrl !== url;
+        const oldUrl = runtimeApiBaseUrl;
+        const changed = oldUrl !== url;
         runtimeApiBaseUrl = url;
         if (window.location?.hostname?.includes("github.io")) {
           console.log("[LAB] ✅ api-config.json loaded, API base:", url);
+          if (oldUrl) {
+            console.log("[LAB] ⚠️ API base changed from", oldUrl, "to", url);
+          }
         }
         if (changed) {
           console.log("[LAB] API base changed, triggering refresh");
+          window.dispatchEvent(new CustomEvent("api-config-loaded"));
+        } else if (!oldUrl && window.location?.hostname?.includes("github.io")) {
+          // First time loading - still trigger refresh to use the new URL
+          console.log("[LAB] First time api-config loaded, triggering refresh");
           window.dispatchEvent(new CustomEvent("api-config-loaded"));
         }
       } else if (window.location?.hostname?.includes("github.io") && !loggedEmptyOnce) {
@@ -122,14 +137,23 @@ export const API_BASE_URL = typeof window !== "undefined" ? getApiBaseUrl() : ""
 // Log URLs in console (so user can verify page URL and API base in DevTools)
 if (typeof window !== "undefined" && window.location?.hostname?.includes("github.io")) {
   console.log("[LAB] Page URL:", window.location.href);
-  if (API_BASE_URL) {
-    console.log("[LAB] API base URL (build-time):", API_BASE_URL);
-  } else {
+  const buildTimeUrl = import.meta.env.VITE_API_BASE_URL;
+  if (buildTimeUrl) {
+    console.log("[LAB] ⚠️ Build-time API URL:", buildTimeUrl, "(may be stale - api-config.json will override)");
+  }
+  if (API_BASE_URL && !runtimeApiBaseUrl) {
+    console.log("[LAB] Using build-time API URL:", API_BASE_URL, "- waiting for api-config.json to load...");
+  } else if (!API_BASE_URL) {
     console.log("[LAB] API not set. Add tunnel URL: https://github.com/Loveleet/lab_live/settings/secrets/actions → API_BASE_URL (or wait for api-config.json)");
   }
 }
 
 export { getApiBaseUrl, loadRuntimeApiConfig };
+
+/** Check if runtime api-config.json has loaded (for debugging) */
+export function hasRuntimeApiConfig() {
+  return !!runtimeApiBaseUrl;
+}
 
 export function api(path) {
   const base = getApiBaseUrl();

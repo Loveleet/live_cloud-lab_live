@@ -23,7 +23,7 @@ import RefreshControls from './components/RefreshControls';
 import SuperTrendPanel from "./SuperTrendPanel";
 import TradeComparePage from "./components/TradeComparePage";
 import SoundSettings from "./components/SoundSettings";
-import { API_BASE_URL, getApiBaseUrl, api, loadRuntimeApiConfig } from "./config";
+import { API_BASE_URL, getApiBaseUrl, api, loadRuntimeApiConfig, hasRuntimeApiConfig } from "./config";
 
 // Animated SVG background for LAB title
 function AnimatedGraphBackground({ width = 400, height = 80, opacity = 0.4 }) {
@@ -132,6 +132,7 @@ const App = () => {
   const [demoDataHint, setDemoDataHint] = useState(null); // when API returns _meta.demoData, show hint instead of demo rows
   const [apiBaseForBanner, setApiBaseForBanner] = useState(() => (typeof getApiBaseUrl === "function" ? getApiBaseUrl() : ""));
   const [apiUnreachable, setApiUnreachable] = useState(false);
+  const [corsError, setCorsError] = useState(false);
   const [clientData, setClientData] = useState([]);
   const [logData, setLogData] = useState([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -343,8 +344,28 @@ const [selectedIntervals, setSelectedIntervals] = useState(() => {
     
     // Debug logging
     if (isGitHubPages) {
+      const buildTimeUrl = import.meta.env.VITE_API_BASE_URL;
+      const hasRuntime = hasRuntimeApiConfig();
       console.log("[DEBUG] GitHub Pages - API base URL:", apiBase || "(empty - waiting for api-config.json)");
+      console.log("[DEBUG] Build-time URL:", buildTimeUrl || "(none)");
+      console.log("[DEBUG] Runtime config loaded:", hasRuntime ? "YES" : "NO (waiting for api-config.json)");
       console.log("[DEBUG] Full API URL for /api/trades:", apiBase ? api("/api/trades") : "(no base)");
+      
+      // On GitHub Pages, if we have build-time URL but runtime hasn't loaded yet, wait a bit
+      // This prevents using stale tunnel URLs that cause CORS errors
+      if (buildTimeUrl && !hasRuntime && apiBase === buildTimeUrl) {
+        console.log("[DEBUG] ⚠️ Using build-time URL before api-config.json loads - waiting 1s for runtime config...");
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        // Re-check after delay - api-config.json might have loaded
+        const newApiBase = getApiBaseUrl();
+        if (newApiBase !== apiBase) {
+          console.log("[DEBUG] ✅ Runtime config loaded during wait, using:", newApiBase);
+          // Recurse with new URL
+          return refreshAllData();
+        } else {
+          console.log("[DEBUG] ⚠️ Runtime config still not loaded after wait - proceeding with build-time URL (may cause CORS errors if tunnel changed)");
+        }
+      }
     }
     
     // On GitHub Pages with no API configured, skip requests to avoid 404 spam (getApiBaseUrl() updates after api-config.json loads)
@@ -362,13 +383,34 @@ const [selectedIntervals, setSelectedIntervals] = useState(() => {
     }
     try {
       setApiUnreachable(false);
+      setCorsError(false);
       const tradesUrl = api("/api/trades");
       console.log("[DEBUG] Fetching trades from:", tradesUrl);
-      const tradeRes = await fetch(tradesUrl);
+      let tradeRes;
+      try {
+        tradeRes = await fetch(tradesUrl);
+      } catch (fetchError) {
+        // CORS or network error
+        if (fetchError.name === "TypeError" && fetchError.message.includes("fetch")) {
+          console.error("[DEBUG] ❌ CORS or network error - check if cloud server allows origin:", window.location.origin);
+          console.error("[DEBUG] ❌ Error details:", fetchError.message);
+          if (isGitHubPages) {
+            console.error("[DEBUG] ❌ Cloud server must have CORS for https://loveleet.github.io - deploy latest server.js and restart");
+            setCorsError(true);
+          }
+        }
+        throw fetchError;
+      }
       console.log("[DEBUG] Trades response status:", tradeRes.status, tradeRes.ok ? "OK" : "FAILED");
       if (!tradeRes.ok) {
         const errorText = await tradeRes.text().catch(() => "");
         console.error("[DEBUG] Trades fetch failed:", tradeRes.status, errorText.substring(0, 200));
+        if (tradeRes.status === 0 || tradeRes.type === "opaque") {
+          console.error("[DEBUG] ❌ CORS error detected (status 0 or opaque response) - cloud server not allowing origin");
+          if (isGitHubPages) {
+            setCorsError(true);
+          }
+        }
       }
       const tradeJson = tradeRes.ok ? await tradeRes.json() : { trades: [] };
       const trades = Array.isArray(tradeJson.trades) ? tradeJson.trades : [];
@@ -425,6 +467,12 @@ const [selectedIntervals, setSelectedIntervals] = useState(() => {
       setTradeData(trades);
       setLogData(logs);
       setClientData(unifiedMachines);
+      
+      // Clear CORS error if we got data successfully
+      if (corsError && trades.length > 0) {
+        console.log("[DEBUG] ✅ CORS error cleared - data loaded successfully");
+        setCorsError(false);
+      }
 
       // Preserve user selections: keep previous values; new machines default to true
       // Always select ALL machines (ignore active status) so every machine’s trades show
@@ -1457,7 +1505,20 @@ useEffect(() => {
               <div className={`flex-1 min-h-screen transition-all duration-300 ${isSidebarOpen ? "ml-64" : "ml-20"} overflow-hidden relative bg-[#f5f6fa] dark:bg-black`}>
                 {/* Main content area, no extra margin-top */}
                 <div className="p-8 pt-2 overflow-x-auto">
-                  {apiUnreachable && (
+                  {corsError && (
+                    <div className="mb-4 p-4 rounded-lg bg-red-100 dark:bg-red-900/40 border border-red-400 dark:border-red-600 text-red-900 dark:text-red-100 text-sm">
+                      <strong className="block mb-2">❌ CORS Error: Cloud server not allowing GitHub Pages origin</strong>
+                      <p className="mb-2">The cloud server (150.241.244.130) is blocking requests from <code className="bg-red-200/60 dark:bg-red-800/60 px-1 rounded">https://loveleet.github.io</code>.</p>
+                      <p className="mb-2"><strong>Fix:</strong> Deploy the latest <code className="bg-red-200/60 dark:bg-red-800/60 px-1 rounded">server/server.js</code> to the cloud (it has CORS for GitHub Pages) and restart the Node app.</p>
+                      <ol className="list-decimal list-inside space-y-1 mt-2 text-xs">
+                        <li>From laptop: <code className="bg-red-200/60 dark:bg-red-800/60 px-1 rounded">export DEPLOY_HOST=root@150.241.244.130 && ./scripts/deploy-to-server.sh</code></li>
+                        <li>Or manually: <code className="bg-red-200/60 dark:bg-red-800/60 px-1 rounded">scp server/server.js root@150.241.244.130:/opt/apps/lab-trading-dashboard/server/</code></li>
+                        <li>On cloud: <code className="bg-red-200/60 dark:bg-red-800/60 px-1 rounded">sudo systemctl restart lab-trading-dashboard</code></li>
+                        <li>Verify: <code className="bg-red-200/60 dark:bg-red-800/60 px-1 rounded">curl -s http://localhost:10000/api/server-info</code> should show <code className="bg-red-200/60 dark:bg-red-800/60 px-1 rounded">hasGitHubPagesOrigin: true</code></li>
+                      </ol>
+                    </div>
+                  )}
+                  {apiUnreachable && !corsError && (
                     <div className="mb-4 p-4 rounded-lg bg-amber-100 dark:bg-amber-900/40 border border-amber-400 dark:border-amber-600 text-amber-900 dark:text-amber-100 text-sm">
                       <strong className="block mb-2">API unreachable (tunnel URL may have changed)</strong>
                       <p className="mb-2">The current API URL could not be resolved (e.g. cloud restarted and got a new tunnel URL). The app will refetch the config and retry in a few seconds.</p>
