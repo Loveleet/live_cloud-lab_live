@@ -1,5 +1,5 @@
-# Run every 2 minutes. Uses the current repo; no repo name is hardcoded.
-# Add steps here to refresh API config or trigger deploy when needed.
+# When the cloud tunnel restarts, the cloud script updates API_BASE_URL secret and triggers this workflow.
+# This workflow then triggers "Deploy frontend to GitHub Pages" so the new build has the new tunnel URL in api-config.json.
 
 name: Update API config
 
@@ -7,13 +7,21 @@ on:
   schedule:
     - cron: '*/2 * * * *'
   workflow_dispatch:
+    inputs:
+      api_url:
+        description: 'Tunnel URL (optional; secret API_BASE_URL is already updated by cloud script)'
+        required: false
 
 permissions:
   contents: read
+  actions: write
 
 jobs:
   update-api-config:
     runs-on: ubuntu-latest
     steps:
-      - name: Update API config
-        run: echo "API config check (add your steps here)"
+      - name: Trigger Deploy frontend to GitHub Pages
+        run: |
+          # So gh-pages gets a fresh build with current API_BASE_URL secret (and api-config.json at /lab_live/api-config.json)
+          gh workflow run "Deploy frontend to GitHub Pages" --ref main
+          echo "Triggered Deploy frontend to GitHub Pages; new api-config will be in next deploy."

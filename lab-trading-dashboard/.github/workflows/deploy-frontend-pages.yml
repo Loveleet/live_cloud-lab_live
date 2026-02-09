@@ -29,13 +29,37 @@ jobs:
           node-version: "20"
           cache: "npm"
 
+      - name: Write api-config.json for GitHub Pages runtime
+        run: |
+          # When API_BASE_URL secret is set (e.g. Cloudflare tunnel HTTPS URL), frontend loads it at runtime from this file
+          API_URL="${{ secrets.API_BASE_URL }}"
+          API_URL="${API_URL%/}"
+          if [ -n "$API_URL" ]; then
+            echo "{\"apiBaseUrl\": \"$API_URL\", \"tunnelUrl\": \"$API_URL\"}" > public/api-config.json
+            echo "Wrote api-config.json with API_BASE_URL"
+          else
+            echo "{}" > public/api-config.json
+            echo "No API_BASE_URL secret — set it to your tunnel HTTPS URL for GitHub Pages to show data"
+          fi
+          cat public/api-config.json
+
       - name: Install and build
         env:
-          VITE_API_BASE_URL: ${{ secrets.API_BASE_URL || 'http://150.241.244.130:10000' }}
+          # Build-time default: use secret (tunnel URL) so first load works; runtime also reads api-config.json
+          VITE_API_BASE_URL: ${{ secrets.API_BASE_URL || '' }}
           VITE_BASE_PATH: /${{ github.event.repository.name }}/
         run: |
           npm ci
           npm run build
+
+      # App runs at /lab_live/ and fetches /lab_live/api-config.json; Vite puts public at dist root, so copy into base path
+      - name: Place api-config.json under base path for GitHub Pages
+        run: |
+          REPO_NAME="${{ github.event.repository.name }}"
+          if [ -f "dist/api-config.json" ]; then
+            cp "dist/api-config.json" "dist/$REPO_NAME/api-config.json"
+            echo "api-config.json available at /$REPO_NAME/api-config.json"
+          fi
 
       - name: Deploy to GitHub Pages (gh-pages branch)
         uses: peaceiris/actions-gh-pages@v4

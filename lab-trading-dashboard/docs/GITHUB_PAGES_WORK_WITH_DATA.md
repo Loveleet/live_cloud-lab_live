@@ -95,4 +95,18 @@ The **quick tunnel** URL (trycloudflare.com) changes every time you restart `clo
 2. Update the **API_BASE_URL** secret in GitHub with that URL.
 3. Run the **Deploy frontend to GitHub Pages** workflow again (or push a commit).
 
+If the cloud runs `update-github-secret-from-tunnel.sh` (e.g. from cron), it will update the secret and trigger **Update API config**, which then triggers **Deploy frontend to GitHub Pages** so gh-pages gets the new URL automatically.
+
 To keep a **stable URL**, use a [Cloudflare named tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/do-more-with-tunnels/tunnel-useful-terms/) with a free Cloudflare account.
+
+---
+
+## Troubleshooting: GitHub Pages shows "No trade records"
+
+1. **api-config.json** – The frontend loads `https://loveleet.github.io/lab_live/api-config.json`. The deploy workflow writes this file and places it under the base path; after deploy it should be there. If the console shows "api-config.json not found", set **API_BASE_URL** to your tunnel HTTPS URL in repo Secrets and run **Deploy frontend to GitHub Pages** again.
+
+2. **CORS** – The cloud server (150.241.244.130) must allow origin `https://loveleet.github.io`. The repo’s `server/server.js` includes this in `allowedOrigins`. Deploy the latest server to the cloud and restart (see **docs/CLOUD_UPDATE_FOR_GITHUB_PAGES.md**).
+
+3. **Database** – The cloud server must use the **olab** database (real data). Set **DB_NAME=olab** in the cloud env (or leave DB_* unset so the server defaults to olab). See **docs/CLOUD_UPDATE_FOR_GITHUB_PAGES.md**.
+
+4. **Verify** – Open `https://YOUR-TUNNEL.trycloudflare.com/api/server-info` in the browser. It should show `hasGitHubPagesOrigin: true` and `database: "olab"`. Then open `https://YOUR-TUNNEL.trycloudflare.com/api/trades` and confirm it returns a non-empty `trades` array.
