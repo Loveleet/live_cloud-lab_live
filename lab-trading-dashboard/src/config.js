@@ -1,13 +1,27 @@
-/** Cloud API (direct IP). Use tunnel URL in .env.local if this isn't reachable from your network. */
+/** Cloud API (direct IP). Used when not on localhost and not GitHub Pages. */
 const CLOUD_API = "http://150.241.244.130:10000";
+
+/** Local API (Node server). Vite dev server proxies /api to this. */
+const LOCAL_API_PORT = 10000;
+const LOCAL_API = `http://localhost:${LOCAL_API_PORT}`;
 
 /** Set by runtime config (api-config.json) when loaded — so GitHub Pages keeps working after cloud reboot */
 let runtimeApiBaseUrl = null;
 let loggedEmptyOnce = false;
 let fetchLoggedOnce = false;
 
+/** True when app is running in browser on localhost (dev). */
+function isLocalhostOrigin() {
+  if (typeof window === "undefined") return false;
+  const h = window.location?.hostname || "";
+  return h === "localhost" || h === "127.0.0.1";
+}
+
 /**
  * Build-time default (env or cloud IP). On HTTPS we never use raw IP (no valid cert → ERR_SSL_PROTOCOL_ERROR).
+ * Localhost: use relative URLs so Vite proxy forwards /api to localhost:10000 (or use env override).
+ * GitHub Pages: no default here; runtime api-config.json or build secret.
+ * Other: cloud API.
  */
 function getBuildTimeDefault() {
   let base = import.meta.env.VITE_API_BASE_URL;
@@ -18,14 +32,20 @@ function getBuildTimeDefault() {
     }
     return base;
   }
-  // When running on localhost (dev), use cloud server for data unless overridden (e.g. VITE_API_BASE_URL=http://localhost:3001 for local Node)
-  if (import.meta.env.MODE !== "production") return CLOUD_API;
+  // LOCALHOST: use empty base so fetch("/api/...") goes to same origin → Vite proxy → localhost:10000
+  // Unless user chose "Use cloud data" after local server was down
+  if (typeof window !== "undefined" && isLocalhostOrigin()) {
+    if (localhostUseCloudFallback) return CLOUD_API;
+    return ""; // Relative URLs; Vite proxy in vite.config.js forwards /api to http://localhost:10000
+  }
+  // Cloud server (150.241.244.130): same-origin
   if (typeof window !== "undefined" && window.location?.origin) {
     const o = window.location.origin;
-    if (o.startsWith("http://150.241.244.130") || o.startsWith("http://localhost") || o.startsWith("https://localhost")) return "";
+    if (o.startsWith("http://150.241.244.130") || o.startsWith("https://localhost")) return "";
   }
   // Production on HTTPS (e.g. GitHub Pages): no raw IP; use API_BASE_URL secret or api-config.json
   if (typeof window !== "undefined" && window.location?.protocol === "https:") return "";
+  // Dev build but not in browser on localhost, or production on HTTP: use cloud
   return CLOUD_API;
 }
 
@@ -148,7 +168,16 @@ if (typeof window !== "undefined" && window.location?.hostname?.includes("github
   }
 }
 
-export { getApiBaseUrl, loadRuntimeApiConfig };
+/** When true, localhost uses cloud API instead of local (used after "Use cloud data" when local server is down). */
+let localhostUseCloudFallback = false;
+export function setLocalhostUseCloudFallback(value) {
+  localhostUseCloudFallback = !!value;
+}
+export function getLocalhostUseCloudFallback() {
+  return localhostUseCloudFallback;
+}
+
+export { getApiBaseUrl, loadRuntimeApiConfig, isLocalhostOrigin };
 
 /** Check if runtime api-config.json has loaded (for debugging) */
 export function hasRuntimeApiConfig() {

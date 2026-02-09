@@ -23,7 +23,7 @@ import RefreshControls from './components/RefreshControls';
 import SuperTrendPanel from "./SuperTrendPanel";
 import TradeComparePage from "./components/TradeComparePage";
 import SoundSettings from "./components/SoundSettings";
-import { API_BASE_URL, getApiBaseUrl, api, loadRuntimeApiConfig, hasRuntimeApiConfig } from "./config";
+import { API_BASE_URL, getApiBaseUrl, api, loadRuntimeApiConfig, hasRuntimeApiConfig, isLocalhostOrigin, setLocalhostUseCloudFallback, getLocalhostUseCloudFallback } from "./config";
 
 // Animated SVG background for LAB title
 function AnimatedGraphBackground({ width = 400, height = 80, opacity = 0.4 }) {
@@ -133,6 +133,7 @@ const App = () => {
   const [apiBaseForBanner, setApiBaseForBanner] = useState(() => (typeof getApiBaseUrl === "function" ? getApiBaseUrl() : ""));
   const [apiUnreachable, setApiUnreachable] = useState(false);
   const [corsError, setCorsError] = useState(false);
+  const [localServerDown, setLocalServerDown] = useState(false);
   const [clientData, setClientData] = useState([]);
   const [logData, setLogData] = useState([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -384,19 +385,28 @@ const [selectedIntervals, setSelectedIntervals] = useState(() => {
     try {
       setApiUnreachable(false);
       setCorsError(false);
+      setLocalServerDown(false);
       const tradesUrl = api("/api/trades");
       console.log("[DEBUG] Fetching trades from:", tradesUrl);
       let tradeRes;
       try {
         tradeRes = await fetch(tradesUrl);
       } catch (fetchError) {
-        // CORS or network error
         if (fetchError.name === "TypeError" && fetchError.message.includes("fetch")) {
-          console.error("[DEBUG] ❌ CORS or network error - check if cloud server allows origin:", window.location.origin);
-          console.error("[DEBUG] ❌ Error details:", fetchError.message);
-          if (isGitHubPages) {
+          if (isLocalhostOrigin()) {
+            if (!getLocalhostUseCloudFallback()) {
+              console.warn("[DEBUG] Local server (port 10000) not running — switching to cloud API automatically.");
+              setLocalhostUseCloudFallback(true);
+              return refreshAllData(); // Retry once with cloud
+            }
+            console.error("[DEBUG] Local server not running and cloud fallback already in use or failed.");
+            setLocalServerDown(true);
+          } else if (isGitHubPages) {
+            console.error("[DEBUG] ❌ CORS or network error - check if cloud server allows origin:", window.location.origin);
             console.error("[DEBUG] ❌ Cloud server must have CORS for https://loveleet.github.io - deploy latest server.js and restart");
             setCorsError(true);
+          } else {
+            console.error("[DEBUG] ❌ Network error:", fetchError.message);
           }
         }
         throw fetchError;
@@ -499,8 +509,10 @@ const [selectedIntervals, setSelectedIntervals] = useState(() => {
       console.error("[DEBUG] Error stack:", error.stack);
       setTradeData([]);
       setDemoDataHint(null);
-      // On GitHub Pages, tunnel URL may have changed (ERR_NAME_NOT_RESOLVED = old URL). Refetch api-config and retry.
-      if (typeof window !== "undefined" && window.location?.hostname?.includes("github.io")) {
+      if (isLocalhostOrigin()) {
+        setApiUnreachable(true);
+        if (!getLocalhostUseCloudFallback()) setLocalServerDown(true);
+      } else if (typeof window !== "undefined" && window.location?.hostname?.includes("github.io")) {
         const currentApiBase = getApiBaseUrl();
         console.log("[DEBUG] GitHub Pages error - current API base:", currentApiBase);
         setApiUnreachable(true);
@@ -1518,7 +1530,25 @@ useEffect(() => {
                       </ol>
                     </div>
                   )}
-                  {apiUnreachable && !corsError && (
+                  {localServerDown && (
+                    <div className="mb-4 p-4 rounded-lg bg-amber-100 dark:bg-amber-900/40 border border-amber-400 dark:border-amber-600 text-amber-900 dark:text-amber-100 text-sm">
+                      <strong className="block mb-2">Local server not running</strong>
+                      <p className="mb-2">The app is trying to use the local API at <code className="bg-amber-200/60 dark:bg-amber-800/60 px-1 rounded">localhost:10000</code> (via Vite proxy), but the connection was refused. Start the Node server in <code className="bg-amber-200/60 dark:bg-amber-800/60 px-1 rounded">lab-trading-dashboard/server</code> or use cloud data.</p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setLocalhostUseCloudFallback(true);
+                          setLocalServerDown(false);
+                          setApiUnreachable(false);
+                          refreshAllData();
+                        }}
+                        className="mt-2 px-3 py-1.5 rounded bg-amber-600 hover:bg-amber-700 text-white text-sm font-medium"
+                      >
+                        Use cloud data
+                      </button>
+                    </div>
+                  )}
+                  {apiUnreachable && !corsError && !localServerDown && (
                     <div className="mb-4 p-4 rounded-lg bg-amber-100 dark:bg-amber-900/40 border border-amber-400 dark:border-amber-600 text-amber-900 dark:text-amber-100 text-sm">
                       <strong className="block mb-2">API unreachable (tunnel URL may have changed)</strong>
                       <p className="mb-2">The current API URL could not be resolved (e.g. cloud restarted and got a new tunnel URL). The app will refetch the config and retry in a few seconds.</p>
