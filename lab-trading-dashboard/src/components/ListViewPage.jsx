@@ -449,10 +449,24 @@ const ListViewPage = () => {
   });
   const [actionRadioMode, setActionRadioMode] = useState(() => localStorage.getItem('pair_stats_action_radio_mode') === 'true');
   const [actionToggleAll, setActionToggleAll] = useState(() => localStorage.getItem('pair_stats_action_toggle_all') === 'true');
-  const [liveOnly, setLiveOnly] = useState(() => localStorage.getItem('pair_stats_live_only') === 'true');
+  const [liveFilter, setLiveFilter] = useState(() => {
+    const saved = localStorage.getItem('pair_stats_live_filter');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        return { true: true, false: true };
+      }
+    }
+    return { true: true, false: true };
+  });
   useEffect(() => {
-    localStorage.setItem('pair_stats_live_only', liveOnly ? 'true' : 'false');
-  }, [liveOnly]);
+    localStorage.setItem('pair_stats_live_filter', JSON.stringify(liveFilter));
+  }, [liveFilter]);
+  const [liveRadioMode, setLiveRadioMode] = useState(() => localStorage.getItem('pair_stats_live_radio_mode') === 'true');
+  useEffect(() => {
+    localStorage.setItem('pair_stats_live_radio_mode', liveRadioMode ? 'true' : 'false');
+  }, [liveRadioMode]);
 
   // Trade data - use same data source as main grid
   const [trades, setTrades] = useState([]);
@@ -582,10 +596,16 @@ const ListViewPage = () => {
   // Filter trades for signals, machines, actions, and live (exist_in_exchange)
   function filterTrades(trades) {
     return trades.filter(t => {
-      if (liveOnly) {
-        const v = t.exist_in_exchange ?? t.Exist_in_exchange;
-        const isLive = v === true || v === "true" || v === 1 || v === "1";
-        if (!isLive) return false;
+      const v = t.exist_in_exchange ?? t.Exist_in_exchange;
+      const isLive = v === true || v === "true" || v === 1 || v === "1";
+      if (liveFilter.true && liveFilter.false) {
+        // Both selected: show all
+      } else if (liveFilter.true && !isLive) {
+        return false; // Only true selected, but trade is false
+      } else if (liveFilter.false && isLive) {
+        return false; // Only false selected, but trade is true
+      } else if (!liveFilter.true && !liveFilter.false) {
+        return false; // Neither selected: show nothing
       }
       if (Object.keys(selectedSignals).length && !selectedSignals[t.SignalFrom]) return false;
       if (Object.keys(selectedMachines).length && !selectedMachines[t.MachineId]) return false;
@@ -676,8 +696,10 @@ const ListViewPage = () => {
       setActionRadioMode={setActionRadioMode}
       actionToggleAll={actionToggleAll}
       setActionToggleAll={setActionToggleAll}
-      liveOnly={liveOnly}
-      setLiveOnly={setLiveOnly}
+      liveFilter={liveFilter}
+      setLiveFilter={setLiveFilter}
+      liveRadioMode={liveRadioMode}
+      setLiveRadioMode={setLiveRadioMode}
       trades={trades}
       darkMode={darkMode}
     />
@@ -688,11 +710,18 @@ const ListViewPage = () => {
   const repIntensity = localStorage.getItem('pair_stats_reputation_intensity');
   const repMode = localStorage.getItem('pair_stats_reputation_mode') || 'perTrade';
 
-  // Apply the same filtering logic as the main grid view (including liveOnly)
+  // Apply the same filtering logic as the main grid view (including liveFilter)
   const filteredTradesForGrid = trades.filter(t => {
-    if (liveOnly) {
-      const v = t.exist_in_exchange ?? t.Exist_in_exchange;
-      if (v !== true && v !== "true" && v !== 1 && v !== "1") return false;
+    const v = t.exist_in_exchange ?? t.Exist_in_exchange;
+    const isLive = v === true || v === "true" || v === 1 || v === "1";
+    if (liveFilter.true && liveFilter.false) {
+      // Both selected: show all
+    } else if (liveFilter.true && !isLive) {
+      return false; // Only true selected, but trade is false
+    } else if (liveFilter.false && isLive) {
+      return false; // Only false selected, but trade is true
+    } else if (!liveFilter.true && !liveFilter.false) {
+      return false; // Neither selected: show nothing
     }
     if (Object.keys(selectedSignals).length && !selectedSignals[t.SignalFrom]) return false;
     if (Object.keys(selectedMachines).length && !selectedMachines[t.MachineId]) return false;
@@ -714,7 +743,7 @@ const ListViewPage = () => {
       reputationEnabled={repEnabled}
       reputationIntensity={repIntensity !== null ? Number(repIntensity) : 0}
       reputationMode={repMode}
-      liveOnly={liveOnly}
+      liveFilter={liveFilter}
     />
   );
 

@@ -35,8 +35,10 @@ const PairStatsFilters = ({
   setActionRadioMode,
   actionToggleAll,
   setActionToggleAll,
-  liveOnly,
-  setLiveOnly,
+  liveFilter,
+  setLiveFilter,
+  liveRadioMode,
+  setLiveRadioMode,
   trades,
   darkMode,
 }) => {
@@ -355,14 +357,96 @@ const PairStatsFilters = ({
               <span className="text-gray-700 dark:text-gray-200 font-semibold">{action}</span>
             </label>
           ))}
+        </div>
+      </div>
+      {/* Live Filter Group (exist_in_exchange) */}
+      <div
+        className="flex-1 min-w-[180px] break-inside-avoid rounded-2xl shadow-lg p-4 gap-2"
+        style={{
+          background: darkMode
+            ? 'linear-gradient(to bottom right, #064e3b 0%, #334155 100%)'
+            : 'linear-gradient(to bottom right, #d1fae5 0%, #ccfbf1 100%)',
+          border: darkMode ? '1.5px solid #064e3b' : '1.5px solid #6ee7b7',
+        }}
+      >
+        <div className="flex items-center gap-2 mb-2">
+          <span className="block text-xl font-extrabold mb-2 tracking-wide relative group transition-transform duration-200 cursor-pointer text-emerald-700 dark:text-emerald-200 hover:scale-105">
+            <span className="mr-2">📡</span> Live
+            <span className="absolute left-0 bottom-0 w-full h-1 rounded bg-gradient-to-r from-emerald-400 via-emerald-300 to-teal-500 opacity-70 group-hover:opacity-100 group-hover:scale-x-110 transition-all"></span>
+          </span>
+          <button
+            onClick={() => {
+              const nextRadio = !liveRadioMode;
+              setLiveRadioMode?.(nextRadio);
+              if (nextRadio) {
+                const f = liveFilter ?? { true: true, false: true };
+                const selected = f.true ? 'true' : 'false';
+                setLiveFilter?.({ true: selected === 'true', false: selected === 'false' });
+              }
+            }}
+            className="bg-emerald-200 dark:bg-emerald-800 text-emerald-900 dark:text-emerald-100 px-2 py-1 rounded text-xs font-semibold hover:bg-emerald-300 dark:hover:bg-emerald-700 focus:ring-2 focus:ring-emerald-400 transition-all"
+            title="Toggle between radio and checkbox mode"
+          >
+            {liveRadioMode ? '🔘 Check' : '☑️ Radio'}
+          </button>
+          {!liveRadioMode && (
+            <button
+              onClick={() => {
+                const f = liveFilter ?? { true: true, false: true };
+                const allChecked = f.true && f.false;
+                setLiveFilter?.({ true: !allChecked, false: !allChecked });
+              }}
+              className={`text-xs font-semibold px-2 py-1 rounded w-fit ml-2 ${
+                (liveFilter?.true && liveFilter?.false)
+                  ? 'bg-red-200 dark:bg-red-800 text-red-900 dark:text-red-100 hover:bg-red-300 dark:hover:bg-red-700 focus:ring-2 focus:ring-red-400'
+                  : 'bg-green-200 dark:bg-green-800 text-green-900 dark:text-green-100 hover:bg-green-300 dark:hover:bg-green-700 focus:ring-2 focus:ring-green-400'
+              } transition-all`}
+              title="Uncheck or select all"
+            >
+              {(liveFilter?.true && liveFilter?.false) ? '❌ Uncheck' : '✅ All'}
+            </button>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-2">
           <label className="flex items-center space-x-2 bg-white dark:bg-gray-800 rounded px-2 py-1 shadow-sm border border-gray-200 dark:border-gray-700">
-            <input
-              type="checkbox"
-              checked={liveOnly ?? false}
-              onChange={() => setLiveOnly?.(prev => !prev)}
-              className="form-checkbox h-5 w-5 text-pink-600"
-            />
-            <span className="text-gray-700 dark:text-gray-200 font-semibold">Live</span>
+            {liveRadioMode ? (
+              <input
+                type="radio"
+                name="liveFilterRadio"
+                checked={!!liveFilter?.true}
+                onChange={() => setLiveFilter?.({ true: true, false: false })}
+                className="form-radio h-5 w-5 text-emerald-600"
+                style={{ accentColor: '#10b981' }}
+              />
+            ) : (
+              <input
+                type="checkbox"
+                checked={liveFilter?.true ?? true}
+                onChange={() => setLiveFilter?.(prev => ({ ...prev, true: !prev.true }))}
+                className="form-checkbox h-5 w-5 text-emerald-600"
+              />
+            )}
+            <span className="text-gray-700 dark:text-gray-200 font-semibold">True</span>
+          </label>
+          <label className="flex items-center space-x-2 bg-white dark:bg-gray-800 rounded px-2 py-1 shadow-sm border border-gray-200 dark:border-gray-700">
+            {liveRadioMode ? (
+              <input
+                type="radio"
+                name="liveFilterRadio"
+                checked={!!liveFilter?.false}
+                onChange={() => setLiveFilter?.({ true: false, false: true })}
+                className="form-radio h-5 w-5 text-emerald-600"
+                style={{ accentColor: '#10b981' }}
+              />
+            ) : (
+              <input
+                type="checkbox"
+                checked={liveFilter?.false ?? true}
+                onChange={() => setLiveFilter?.(prev => ({ ...prev, false: !prev.false }))}
+                className="form-checkbox h-5 w-5 text-emerald-600"
+              />
+            )}
+            <span className="text-gray-700 dark:text-gray-200 font-semibold">False</span>
           </label>
         </div>
       </div>

@@ -307,13 +307,27 @@ const [selectedActions, setSelectedActions] = useState({
   BUY: true,
   SELL: true,
 });
-const [liveOnly, setLiveOnly] = useState(() => {
-  const saved = localStorage.getItem("liveOnly");
+const [liveFilter, setLiveFilter] = useState(() => {
+  const saved = localStorage.getItem("liveFilter");
+  if (saved) {
+    try {
+      return JSON.parse(saved);
+    } catch {
+      return { true: true, false: true };
+    }
+  }
+  return { true: true, false: true }; // Both checked by default (show all)
+});
+useEffect(() => {
+  localStorage.setItem("liveFilter", JSON.stringify(liveFilter));
+}, [liveFilter]);
+const [liveRadioMode, setLiveRadioMode] = useState(() => {
+  const saved = localStorage.getItem("liveRadioMode");
   return saved === "true";
 });
 useEffect(() => {
-  localStorage.setItem("liveOnly", liveOnly ? "true" : "false");
-}, [liveOnly]);
+  localStorage.setItem("liveRadioMode", liveRadioMode ? "true" : "false");
+}, [liveRadioMode]);
 const [filterVisible, setFilterVisible] = useState(() => {
   const saved = localStorage.getItem("filterVisible");
   if (saved === "false") return false;
@@ -563,10 +577,17 @@ const filteredTradeData = useMemo(() => {
     const isMachineSelected = isSelected(selectedMachines, toMachineKey(trade.machineid));
     const isIntervalSelected = isSelected(selectedIntervals, trade.interval);
     const isActionSelected = isSelected(selectedActions, trade.action);
-    if (liveOnly) {
-      const v = trade.exist_in_exchange ?? trade.Exist_in_exchange;
-      const isLive = v === true || v === "true" || v === 1 || v === "1";
-      if (!isLive) return false;
+    // Filter by exist_in_exchange: check if trade's value matches selected filter
+    const v = trade.exist_in_exchange ?? trade.Exist_in_exchange;
+    const isLive = v === true || v === "true" || v === 1 || v === "1";
+    if (liveFilter.true && liveFilter.false) {
+      // Both selected: show all
+    } else if (liveFilter.true && !isLive) {
+      return false; // Only true selected, but trade is false
+    } else if (liveFilter.false && isLive) {
+      return false; // Only false selected, but trade is true
+    } else if (!liveFilter.true && !liveFilter.false) {
+      return false; // Neither selected: show nothing
     }
 
     // ✅ Handle missing or malformed Candle time
@@ -581,7 +602,7 @@ const filteredTradeData = useMemo(() => {
     return isSignalSelected && isMachineSelected && isIntervalSelected && isActionSelected && isDateInRange;
   });
   // console.log('[App.jsx] filteredTradeData:', filteredTradeData);
-}, [tradeData, selectedSignals, selectedMachines, selectedIntervals, selectedActions, fromDate, toDate, includeMinClose, fontSizeLevel, liveOnly]);
+}, [tradeData, selectedSignals, selectedMachines, selectedIntervals, selectedActions, fromDate, toDate, includeMinClose, fontSizeLevel, liveFilter]);
 
 // Debug: log machine coverage and trade counts (raw vs filtered)
 useEffect(() => {
@@ -1626,8 +1647,10 @@ useEffect(() => {
                       setIntervalRadioMode={setIntervalRadioMode}
                       actionRadioMode={actionRadioMode}
                       setActionRadioMode={setActionRadioMode}
-                      liveOnly={liveOnly}
-                      setLiveOnly={setLiveOnly}
+                      liveFilter={liveFilter}
+                      setLiveFilter={setLiveFilter}
+                      liveRadioMode={liveRadioMode}
+                      setLiveRadioMode={setLiveRadioMode}
                       signalToggleAll={signalToggleAll}
                       setSignalToggleAll={setSignalToggleAll}
                       machineToggleAll={machineToggleAll}

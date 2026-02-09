@@ -576,10 +576,24 @@ const LiveTradeViewPage = () => {
   });
   const [actionRadioMode, setActionRadioMode] = useState(() => localStorage.getItem('liveTradeView_action_radio_mode') === 'true');
   const [actionToggleAll, setActionToggleAll] = useState(() => localStorage.getItem('liveTradeView_action_toggle_all') === 'true');
-  const [liveOnly, setLiveOnly] = useState(() => localStorage.getItem('liveTradeView_live_only') === 'true');
+  const [liveFilter, setLiveFilter] = useState(() => {
+    const saved = localStorage.getItem('liveTradeView_live_filter');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        return { true: true, false: true };
+      }
+    }
+    return { true: true, false: true };
+  });
   useEffect(() => {
-    localStorage.setItem('liveTradeView_live_only', liveOnly ? 'true' : 'false');
-  }, [liveOnly]);
+    localStorage.setItem('liveTradeView_live_filter', JSON.stringify(liveFilter));
+  }, [liveFilter]);
+  const [liveRadioMode, setLiveRadioMode] = useState(() => localStorage.getItem('liveTradeView_live_radio_mode') === 'true');
+  useEffect(() => {
+    localStorage.setItem('liveTradeView_live_radio_mode', liveRadioMode ? 'true' : 'false');
+  }, [liveRadioMode]);
 
   // Save selectedActions to localStorage when it changes
   useEffect(() => {
@@ -851,8 +865,10 @@ const LiveTradeViewPage = () => {
       setActionRadioMode={setActionRadioMode}
       actionToggleAll={actionToggleAll}
       setActionToggleAll={setActionToggleAll}
-      liveOnly={liveOnly}
-      setLiveOnly={setLiveOnly}
+      liveFilter={liveFilter}
+      setLiveFilter={setLiveFilter}
+      liveRadioMode={liveRadioMode}
+      setLiveRadioMode={setLiveRadioMode}
       trades={trades}
       darkMode={darkMode}
     />

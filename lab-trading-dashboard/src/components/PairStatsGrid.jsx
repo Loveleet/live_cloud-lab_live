@@ -362,7 +362,7 @@ function isExistInExchange(t) {
   const v = t.exist_in_exchange ?? t.Exist_in_exchange;
   return v === true || v === "true" || v === 1 || v === "1";
 }
-const PairStatsGrid = ({ onPairSelect, candleType, interval, trades = [], selectedPair = null, previewMode = false, filterBar, darkMode, groupModeEnabled, selectedGroupPairs = [], setSelectedGroupPairs, showForClubFilter, setShowForClubFilter, onVisiblePairsChange, liveOnly = false, ...rest }) => {
+const PairStatsGrid = ({ onPairSelect, candleType, interval, trades = [], selectedPair = null, previewMode = false, filterBar, darkMode, groupModeEnabled, selectedGroupPairs = [], setSelectedGroupPairs, showForClubFilter, setShowForClubFilter, onVisiblePairsChange, liveFilter = { true: true, false: true }, ...rest }) => {
   // console.log('PairStatsGrid onPairSelect:', onPairSelect);
   const [search, setSearch] = useState(() => localStorage.getItem('pair_stats_search') || '');
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -549,7 +549,17 @@ const PairStatsGrid = ({ onPairSelect, candleType, interval, trades = [], select
   // Helper: filter trades by all selected filters (use SignalFrom and MachineId)
   function filterTrades(trades) {
     return trades.filter(t => {
-      if (liveOnly && !isExistInExchange(t)) return false;
+      // Filter by exist_in_exchange
+      const isLive = isExistInExchange(t);
+      if (liveFilter.true && liveFilter.false) {
+        // Both selected: show all
+      } else if (liveFilter.true && !isLive) {
+        return false; // Only true selected, but trade is false
+      } else if (liveFilter.false && isLive) {
+        return false; // Only false selected, but trade is true
+      } else if (!liveFilter.true && !liveFilter.false) {
+        return false; // Neither selected: show nothing
+      }
       // Signal filter
       if (Object.keys(selectedSignals).length && !selectedSignals[t.signalfrom]) return false;
       // Machine filter
