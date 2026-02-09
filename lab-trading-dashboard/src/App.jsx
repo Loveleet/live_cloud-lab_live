@@ -1562,24 +1562,6 @@ useEffect(() => {
                       <div>API Base: {getApiBaseUrl() || "(empty - waiting for api-config.json)"}</div>
                       <div>Page URL: {window.location.href}</div>
                       <div>Full API URL: {getApiBaseUrl() ? api("/api/trades") : "N/A"}</div>
-                      <button 
-                        onClick={async () => {
-                          const url = api("/api/server-info");
-                          console.log("[DEBUG] Testing server-info:", url);
-                          try {
-                            const res = await fetch(url);
-                            const data = await res.json();
-                            console.log("[DEBUG] Server info:", data);
-                            alert(JSON.stringify(data, null, 2));
-                          } catch (e) {
-                            console.error("[DEBUG] Server info error:", e);
-                            alert("Error: " + e.message);
-                          }
-                        }}
-                        className="mt-2 px-2 py-1 bg-blue-500 text-white rounded text-xs"
-                      >
-                        Test /api/server-info
-                      </button>
                     </div>
                   )}
                   {typeof window !== "undefined" && window.location?.hostname?.includes("github.io") && !apiBaseForBanner && !apiUnreachable && (
