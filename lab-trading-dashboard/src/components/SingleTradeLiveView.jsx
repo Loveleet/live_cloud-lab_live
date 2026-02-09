@@ -8,14 +8,38 @@ import { API_BASE_URL, api, apiSignals, getApiBaseUrl } from "../config";
 const REFRESH_INTERVAL_KEY = "refresh_app_main_intervalSec";
 
 const TV_SCRIPT_ID = "tradingview-widget-script-single";
-function loadTradingViewScript() {
-  if (!document.getElementById(TV_SCRIPT_ID)) {
-    const script = document.createElement("script");
-    script.id = TV_SCRIPT_ID;
-    script.src = "https://s3.tradingview.com/tv.js";
-    script.async = true;
-    document.body.appendChild(script);
+function loadTradingViewScript(onReady) {
+  if (typeof window !== "undefined" && window.TradingView) {
+    onReady?.();
+    return;
   }
+  const el = document.getElementById(TV_SCRIPT_ID);
+  if (el) {
+    if (window.TradingView) {
+      onReady?.();
+      return;
+    }
+    el.addEventListener("load", () => {
+      const check = () => {
+        if (window.TradingView) onReady?.();
+        else setTimeout(check, 50);
+      };
+      setTimeout(check, 0);
+    }, { once: true });
+    return;
+  }
+  const script = document.createElement("script");
+  script.id = TV_SCRIPT_ID;
+  script.src = "https://s3.tradingview.com/tv.js";
+  script.async = true;
+  script.onload = () => {
+    const check = () => {
+      if (window.TradingView) onReady?.();
+      else setTimeout(check, 50);
+    };
+    setTimeout(check, 0);
+  };
+  document.body.appendChild(script);
 }
 
 const intervalMap = {
@@ -61,6 +85,28 @@ const INTERVALS = ["5m", "15m", "1h", "4h"];
 // Display order: current first, then prev, then prior (API summary is [prior, prev, current] = index 0,1,2)
 const ROW_LABELS = ["current_row", "prev row", "prior row"];
 const ROW_LABEL_TO_DATA_INDEX = { "prior row": 0, "prev row": 1, "current_row": 2 };
+
+// Format signal name for display: show first + "..." + last, with smart differentiation for similar prefixes
+function formatSignalName(label, allLabels) {
+  if (!label || label.length <= 14) return label;
+  const prefixLen = 4;
+  const suffixLen = 4;
+  const extendedSuffixLen = 6; // Use more chars when prefix is shared
+  
+  const prefix = label.substring(0, prefixLen).toLowerCase();
+  const similar = allLabels.filter((l) => l && l.toLowerCase().startsWith(prefix));
+  
+  if (similar.length > 1) {
+    // Multiple names start the same - show more of the end to help differentiate
+    const start = label.substring(0, prefixLen);
+    const end = label.substring(label.length - extendedSuffixLen);
+    return `${start}...${end}`;
+  }
+  // Unique prefix - standard truncation
+  const start = label.substring(0, prefixLen);
+  const end = label.substring(label.length - suffixLen);
+  return `${start}...${end}`;
+}
 const INTERVAL_GROUP_COLORS = [
   "bg-teal-100 dark:bg-teal-900/40",
   "bg-blue-100 dark:bg-blue-900/40",
@@ -240,6 +286,12 @@ function ConfirmActionModal({
               type="password"
               value={password}
               onChange={(e) => { setPassword(e.target.value); setError(""); }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  handlePasswordNext();
+                }
+              }}
               placeholder="Password"
               className="w-full border-2 border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-[#333] text-[#222] dark:text-gray-200 mb-3"
               autoFocus
@@ -257,6 +309,12 @@ function ConfirmActionModal({
               inputMode="decimal"
               value={amount}
               onChange={(e) => { setAmount(e.target.value); setError(""); }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  handleAmountConfirm();
+                }
+              }}
               placeholder={amountPlaceholder}
               className="w-full border-2 border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-[#333] text-[#222] dark:text-gray-200 mb-3"
               autoFocus
@@ -619,7 +677,8 @@ function stripHtml(str) {
 }
 
 function LiveTradeChartSection({ tradePair, chartSize = { width: 500, height: 400 } }) {
-  const symbols = [getRobustSymbol(tradePair), "BTCUSDT"];
+  const pair = tradePair != null ? String(tradePair) : "";
+  const symbols = [getRobustSymbol(pair), "BTCUSDT"];
   const getSetting = (key, def) => {
     try {
       const v = localStorage.getItem(`chartGridSetting_${key}`);
@@ -629,7 +688,8 @@ function LiveTradeChartSection({ tradePair, chartSize = { width: 500, height: 40
   };
   const defaultIndicators = ["RSI@tv-basicstudies", "MACD@tv-basicstudies", "Volume@tv-basicstudies", "CCI@tv-basicstudies"];
   const [interval, setIntervalState] = useState(getSetting("interval", "15m"));
-  const [showAllIntervals, setShowAllIntervals] = useState(getSetting("showAllIntervals", false));
+  // Default to showing all intervals so charts are visible immediately on first load
+  const [showAllIntervals, setShowAllIntervals] = useState(getSetting("showAllIntervals", true));
   const [layout, setLayout] = useState(getSetting("layout", 2));
   const [intervalOrder, setIntervalOrder] = useState(() => {
     try {
@@ -644,10 +704,6 @@ function LiveTradeChartSection({ tradePair, chartSize = { width: 500, height: 40
   const [chartReady, setChartReady] = useState(false);
 
   const setInterval = (v) => setIntervalState(v);
-
-  useEffect(() => {
-    if (source === "tradingview") loadTradingViewScript();
-  }, [source]);
 
   useEffect(() => {
     try {
@@ -675,60 +731,67 @@ function LiveTradeChartSection({ tradePair, chartSize = { width: 500, height: 40
   const symbolsKey = symbols.join(",");
 
   useEffect(() => {
-    setChartReady(false);
-    if (source !== "tradingview" || !window.TradingView) {
+    // Create / refresh TradingView widgets when source, interval, indicators, etc. change.
+    if (source !== "tradingview") {
       setChartReady(true);
       return;
     }
+    setChartReady(false);
     const list = showAllIntervals ? intervalOrder : [interval];
     const pairs = [];
     symbols.forEach((symbol) => {
       list.forEach((intv) => pairs.push({ symbol, intv }));
     });
-    let cancelled = false;
-    const createNext = (index) => {
-      if (cancelled || index >= pairs.length) {
+
+    const buildCharts = () => {
+      if (typeof window === "undefined" || !window.TradingView) {
         setChartReady(true);
         return;
       }
-      const { symbol, intv } = pairs[index];
-      const safeIntv = intv.replace(/[^a-z0-9]/gi, "_");
-      const cid = `single_tv_${symbol}_${safeIntv}`;
-      const container = document.getElementById(cid);
-      if (container) {
-        container.innerHTML = "";
-        new window.TradingView.widget({
-          container_id: cid,
-          autosize: true,
-          symbol: `BINANCE:${symbol}PERP`,
-          interval: intervalMap[intv] || "15",
-          timezone: "Etc/UTC",
-          theme: "dark",
-          style: "8",
-          locale: "en",
-          studies: indicators,
-          overrides: {
-            volumePaneSize: indicators.includes("Volume@tv-basicstudies") ? "medium" : "0",
-            paneProperties: { topMargin: 10, bottomMargin: 15, rightMargin: 20 },
-            scalesProperties: { fontSize: 11 },
-          },
-          studies_overrides: { "RSI@tv-basicstudies.length": 9 },
-          hide_side_toolbar: false,
-          allow_symbol_change: false,
-          details: true,
-          withdateranges: true,
-          hideideas: true,
-          toolbar_bg: "#222",
-          height: chartHeight,
-          width: chartWidth,
-        });
-      }
-      requestAnimationFrame(() => createNext(index + 1));
+      pairs.forEach(({ symbol, intv }) => {
+        const safeIntv = (intv && String(intv).replace(/[^a-z0-9]/gi, "_")) || "15m";
+        const cid = `single_tv_${symbol}_${safeIntv}`;
+        const container = document.getElementById(cid);
+        if (!container) return;
+        try {
+          container.innerHTML = "";
+          new window.TradingView.widget({
+            container_id: cid,
+            autosize: true,
+            symbol: `BINANCE:${symbol}PERP`,
+            interval: intervalMap[intv] || "15",
+            timezone: "Etc/UTC",
+            theme: "dark",
+            style: "8",
+            locale: "en",
+            studies: indicators,
+            overrides: {
+              volumePaneSize: indicators.includes("Volume@tv-basicstudies") ? "medium" : "0",
+              paneProperties: { topMargin: 10, bottomMargin: 15, rightMargin: 20 },
+              scalesProperties: { fontSize: 11 },
+            },
+            studies_overrides: { "RSI@tv-basicstudies.length": 9 },
+            hide_side_toolbar: false,
+            allow_symbol_change: false,
+            details: true,
+            withdateranges: true,
+            hideideas: true,
+            toolbar_bg: "#222",
+            height: chartHeight,
+            width: chartWidth,
+          });
+        } catch (err) {
+          console.warn("[Chart] Widget create error for", cid, err?.message || err);
+        }
+      });
+      setChartReady(true);
     };
-    const t = setTimeout(() => createNext(0), 50);
+
+    // Ensure script is loaded; buildCharts will run once TradingView is ready.
+    loadTradingViewScript(buildCharts);
+
     return () => {
-      cancelled = true;
-      clearTimeout(t);
+      setChartReady(true);
     };
   }, [source, interval, showAllIntervals, intervalOrderKey, indicators, layout, symbolsKey, chartHeight, chartWidth]);
 
@@ -842,14 +905,19 @@ function LiveTradeChartSection({ tradePair, chartSize = { width: 500, height: 40
             <span className="text-white/90 text-sm">Loading chart…</span>
           </div>
         )}
-        {intervalsToShow.map((intv) => (
+        {chartReady && source === "tradingview" && typeof window !== "undefined" && !window.TradingView && (
+          <div className="flex items-center justify-center py-8 text-amber-400 text-sm">
+            Chart script could not load. Check network or disable ad blocker and refresh.
+          </div>
+        )}
+        {intervalsToShow.filter(Boolean).map((intv) => (
           <div
             key={intv}
             className="grid gap-4"
             style={{ gridTemplateColumns: `repeat(${layout}, minmax(0, 1fr))` }}
           >
             {symbols.map((symbol) => {
-              const safeIntv = intv.replace(/[^a-z0-9]/gi, "_");
+              const safeIntv = (intv && String(intv).replace(/[^a-z0-9]/gi, "_")) || "15m";
               return (
                 <div
                   key={`${symbol}-${intv}`}
@@ -1255,10 +1323,13 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
                           </tr>
                         </thead>
                         <tbody>
-                          {SIGNAL_ROWS.map(({ label, key }) => (
+                          {SIGNAL_ROWS.map(({ label, key }) => {
+                            const allLabels = SIGNAL_ROWS.map((r) => r.label);
+                            const displayLabel = formatSignalName(label, allLabels);
+                            return (
                             <tr key={key} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
                               <td className="border border-gray-200 dark:border-gray-600 px-1 py-0.5 font-medium text-teal-700 dark:text-teal-400 whitespace-nowrap truncate max-w-[100px]" title={label}>
-                                {label}
+                                {displayLabel}
                               </td>
                               {columns.map((col, idx) => {
                                 const summary = signalsData.intervals[col.iv]?.summary;
@@ -1277,7 +1348,8 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
                                 );
                               })}
                             </tr>
-                          ))}
+                            );
+                          })}
                         </tbody>
                       </table>
                     );
@@ -1428,12 +1500,35 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
         <section key="chart" className="rounded-xl border border-gray-300 dark:border-gray-700 overflow-hidden shadow-lg flex-1 min-h-[240px] flex flex-col">
           <div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-4 py-2.5 bg-gradient-to-r from-teal-800 to-teal-700 text-white font-semibold flex-shrink-0">
             <span className="text-sm sm:text-base">Chart</span>
-            <ZoomControls
-              onDecrease={zoomOutChart}
-              onIncrease={zoomInChart}
-              current={zoomChart}
-              label="Zoom chart labels"
-            />
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className="text-white/90 text-xs">Height:</span>
+              <div className="flex items-center gap-1" title="Chart height">
+                <button
+                  type="button"
+                  onClick={() => setChartHeight((h) => Math.max(SIZE_CONFIG.chart.min, h - SIZE_CONFIG.chart.step))}
+                  disabled={chartHeight <= SIZE_CONFIG.chart.min}
+                  className="min-w-[32px] min-h-[32px] flex items-center justify-center rounded-lg bg-white/20 hover:bg-white/30 disabled:opacity-40 text-white text-lg font-bold"
+                  aria-label="Decrease chart height"
+                >
+                  −
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setChartHeight((h) => Math.min(SIZE_CONFIG.chart.max, h + SIZE_CONFIG.chart.step))}
+                  disabled={chartHeight >= SIZE_CONFIG.chart.max}
+                  className="min-w-[32px] min-h-[32px] flex items-center justify-center rounded-lg bg-white/20 hover:bg-white/30 disabled:opacity-40 text-white text-lg font-bold"
+                  aria-label="Increase chart height"
+                >
+                  +
+                </button>
+              </div>
+              <ZoomControls
+                onDecrease={zoomOutChart}
+                onIncrease={zoomInChart}
+                current={zoomChart}
+                label="Zoom chart labels"
+              />
+            </div>
           </div>
           <div className="p-3 sm:p-4 flex-1 min-h-0 overflow-auto overflow-x-auto" style={{ fontSize: `${(zoomChart / 100) * 14}px`, minHeight: chartHeight }}>
             <LiveTradeChartSection tradePair={tradePair} chartSize={chartSize} />

@@ -371,6 +371,12 @@ export default function LiveRunningTradesPage() {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  handlePasswordConfirm();
+                }
+              }}
               placeholder="Password"
               className="w-full border-2 rounded-lg px-3 py-2 mb-4 bg-white dark:bg-[#333] text-[#222] dark:text-gray-200"
             />
