@@ -276,6 +276,21 @@ app.get("/api/bot-event-logs", async (req, res) => {
   }
 });
 
+// ✅ Auto-Pilot state (in-memory by unique_id; replace with DB if needed)
+const autopilotStore = new Map();
+app.get("/api/autopilot", (req, res) => {
+  const unique_id = (req.query.unique_id || "").trim();
+  if (!unique_id) return res.status(400).json({ error: "unique_id required" });
+  const entry = autopilotStore.get(unique_id);
+  res.json({ enabled: !!(entry && entry.enabled) });
+});
+app.post("/api/autopilot", (req, res) => {
+  const { unique_id, password, enabled } = req.body || {};
+  if (!(unique_id && typeof unique_id === "string")) return res.status(400).json({ error: "unique_id required" });
+  autopilotStore.set(unique_id.trim(), { enabled: !!enabled, updatedAt: new Date().toISOString() });
+  res.json({ ok: true, enabled: !!enabled });
+});
+
 // ✅ Proxy to Python CalculateSignals API (run python api_signals.py on port 5001)
 const PYTHON_SIGNALS_URL = process.env.PYTHON_SIGNALS_URL || "http://localhost:5001";
 app.post("/api/calculate-signals", async (req, res) => {

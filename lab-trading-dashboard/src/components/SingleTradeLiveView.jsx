@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Play, Settings, Square, Shield, Crosshair, LayoutGrid } from "lucide-react";
 import { formatTradeData } from "./TableView";
 import { LogoutButton } from "../auth";
-import { API_BASE_URL, api, apiSignals } from "../config";
+import { API_BASE_URL, api, apiSignals, getApiBaseUrl } from "../config";
 
 const REFRESH_INTERVAL_KEY = "refresh_app_main_intervalSec";
 
@@ -35,6 +35,7 @@ const INDICATORS = [
   { key: "RSI@tv-basicstudies", label: "RSI-9" },
   { key: "MACD@tv-basicstudies", label: "MACD" },
   { key: "Volume@tv-basicstudies", label: "Volume" },
+  { key: "CCI@tv-basicstudies", label: "CCI" },
 ];
 
 const INFO_FIELDS_KEY = "singleTradeLiveView_infoFields";
@@ -57,7 +58,9 @@ const SECTION_IDS = ["information", "binanceData", "chart"];
 const SECTION_LABELS = { information: "Information", binanceData: "Binance Data", chart: "Chart" };
 
 const INTERVALS = ["5m", "15m", "1h", "4h"];
-const ROW_LABELS = ["prior row", "prev row", "current_row"];
+// Display order: current first, then prev, then prior (API summary is [prior, prev, current] = index 0,1,2)
+const ROW_LABELS = ["current_row", "prev row", "prior row"];
+const ROW_LABEL_TO_DATA_INDEX = { "prior row": 0, "prev row": 1, "current_row": 2 };
 const INTERVAL_GROUP_COLORS = [
   "bg-teal-100 dark:bg-teal-900/40",
   "bg-blue-100 dark:bg-blue-900/40",
@@ -130,6 +133,7 @@ const DEMO_PASSWORD = "demo123";
 const ACTION_LABELS = {
   execute: "Execute trade",
   endTrade: "End trade",
+  autoPilot: "Auto-Pilot",
   hedge: "Hedge",
   setStopPrice: "Set stop price",
   addInvestment: "Add investment",
@@ -623,9 +627,10 @@ function LiveTradeChartSection({ tradePair, chartSize = { width: 500, height: 40
     } catch {}
     return def;
   };
-  const [interval, setInterval] = useState(getSetting("interval", "15m"));
-  const [showAllIntervals, setShowAllIntervals] = useState(false);
-  const [layout, setLayout] = useState(2); // 1 or 2 per row
+  const defaultIndicators = ["RSI@tv-basicstudies", "MACD@tv-basicstudies", "Volume@tv-basicstudies", "CCI@tv-basicstudies"];
+  const [interval, setIntervalState] = useState(getSetting("interval", "15m"));
+  const [showAllIntervals, setShowAllIntervals] = useState(getSetting("showAllIntervals", false));
+  const [layout, setLayout] = useState(getSetting("layout", 2));
   const [intervalOrder, setIntervalOrder] = useState(() => {
     try {
       const v = localStorage.getItem(INTERVAL_ORDER_KEY);
@@ -634,8 +639,11 @@ function LiveTradeChartSection({ tradePair, chartSize = { width: 500, height: 40
     return [...ALL_INTERVALS];
   });
   const [showIntervalOrderModal, setShowIntervalOrderModal] = useState(false);
-  const [indicators, setIndicators] = useState(getSetting("indicators", ["RSI@tv-basicstudies", "MACD@tv-basicstudies", "Volume@tv-basicstudies"]));
+  const [indicators, setIndicators] = useState(getSetting("indicators", defaultIndicators));
   const [source] = useState(getSetting("source", "tradingview"));
+  const [chartReady, setChartReady] = useState(false);
+
+  const setInterval = (v) => setIntervalState(v);
 
   useEffect(() => {
     if (source === "tradingview") loadTradingViewScript();
@@ -646,6 +654,15 @@ function LiveTradeChartSection({ tradePair, chartSize = { width: 500, height: 40
       localStorage.setItem(INTERVAL_ORDER_KEY, JSON.stringify(intervalOrder));
     } catch {}
   }, [intervalOrder]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("chartGridSetting_interval", JSON.stringify(interval));
+      localStorage.setItem("chartGridSetting_showAllIntervals", JSON.stringify(showAllIntervals));
+      localStorage.setItem("chartGridSetting_layout", JSON.stringify(layout));
+      localStorage.setItem("chartGridSetting_indicators", JSON.stringify(indicators));
+    } catch {}
+  }, [interval, showAllIntervals, layout, indicators]);
 
   const intervalsToShow = showAllIntervals ? intervalOrder : [interval];
 
@@ -658,43 +675,61 @@ function LiveTradeChartSection({ tradePair, chartSize = { width: 500, height: 40
   const symbolsKey = symbols.join(",");
 
   useEffect(() => {
-    if (source !== "tradingview" || !window.TradingView) return;
+    setChartReady(false);
+    if (source !== "tradingview" || !window.TradingView) {
+      setChartReady(true);
+      return;
+    }
     const list = showAllIntervals ? intervalOrder : [interval];
+    const pairs = [];
     symbols.forEach((symbol) => {
-      list.forEach((intv) => {
-        const safeIntv = intv.replace(/[^a-z0-9]/gi, "_");
-        const cid = `single_tv_${symbol}_${safeIntv}`;
-        const container = document.getElementById(cid);
-        if (container) {
-          container.innerHTML = "";
-          new window.TradingView.widget({
-            container_id: cid,
-            autosize: true,
-            symbol: `BINANCE:${symbol}PERP`,
-            interval: intervalMap[intv] || "15",
-            timezone: "Etc/UTC",
-            theme: "dark",
-            style: "8",
-            locale: "en",
-            studies: indicators,
-            overrides: {
-              volumePaneSize: indicators.includes("Volume@tv-basicstudies") ? "medium" : "0",
-              paneProperties: { topMargin: 10, bottomMargin: 15, rightMargin: 20 },
-              scalesProperties: { fontSize: 11 },
-            },
-            studies_overrides: { "RSI@tv-basicstudies.length": 9 },
-            hide_side_toolbar: false,
-            allow_symbol_change: false,
-            details: true,
-            withdateranges: true,
-            hideideas: true,
-            toolbar_bg: "#222",
-            height: chartHeight,
-            width: chartWidth,
-          });
-        }
-      });
+      list.forEach((intv) => pairs.push({ symbol, intv }));
     });
+    let cancelled = false;
+    const createNext = (index) => {
+      if (cancelled || index >= pairs.length) {
+        setChartReady(true);
+        return;
+      }
+      const { symbol, intv } = pairs[index];
+      const safeIntv = intv.replace(/[^a-z0-9]/gi, "_");
+      const cid = `single_tv_${symbol}_${safeIntv}`;
+      const container = document.getElementById(cid);
+      if (container) {
+        container.innerHTML = "";
+        new window.TradingView.widget({
+          container_id: cid,
+          autosize: true,
+          symbol: `BINANCE:${symbol}PERP`,
+          interval: intervalMap[intv] || "15",
+          timezone: "Etc/UTC",
+          theme: "dark",
+          style: "8",
+          locale: "en",
+          studies: indicators,
+          overrides: {
+            volumePaneSize: indicators.includes("Volume@tv-basicstudies") ? "medium" : "0",
+            paneProperties: { topMargin: 10, bottomMargin: 15, rightMargin: 20 },
+            scalesProperties: { fontSize: 11 },
+          },
+          studies_overrides: { "RSI@tv-basicstudies.length": 9 },
+          hide_side_toolbar: false,
+          allow_symbol_change: false,
+          details: true,
+          withdateranges: true,
+          hideideas: true,
+          toolbar_bg: "#222",
+          height: chartHeight,
+          width: chartWidth,
+        });
+      }
+      requestAnimationFrame(() => createNext(index + 1));
+    };
+    const t = setTimeout(() => createNext(0), 50);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
   }, [source, interval, showAllIntervals, intervalOrderKey, indicators, layout, symbolsKey, chartHeight, chartWidth]);
 
   return (
@@ -801,7 +836,12 @@ function LiveTradeChartSection({ tradePair, chartSize = { width: 500, height: 40
         </div>
       )}
 
-      <div className="space-y-6">
+      <div className="space-y-6 relative">
+        {!chartReady && (
+          <div className="absolute inset-0 flex items-center justify-center bg-[#111]/80 z-10 rounded-lg">
+            <span className="text-white/90 text-sm">Loading chart…</span>
+          </div>
+        )}
         {intervalsToShow.map((intv) => (
           <div
             key={intv}
@@ -1074,17 +1114,35 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
     });
   }, [rawTrade?.unique_id, callPythonApi]);
 
+  const handleAutoPilot = useCallback(async ({ password }) => {
+    const base = getApiBaseUrl();
+    if (!base) throw new Error("API not configured");
+    const unique_id = rawTrade?.unique_id;
+    const res = await fetch(api("/api/autopilot"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ unique_id, password: (password || "").trim(), enabled: true }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ message: res.statusText }));
+      throw new Error(err.message || err.detail || `API error ${res.status}`);
+    }
+    const data = await res.json().catch(() => ({}));
+    return data;
+  }, [rawTrade?.unique_id]);
+
   const getConfirmHandler = useCallback((type) => {
     switch (type) {
       case "execute": return handleExecute;
       case "endTrade": return handleEndTrade;
+      case "autoPilot": return handleAutoPilot;
       case "hedge": return handleHedge;
       case "setStopPrice": return handleSetStopPrice;
       case "addInvestment": return handleAddInvestment;
       case "clear": return handleClear;
       default: return async () => {};
     }
-  }, [handleExecute, handleEndTrade, handleHedge, handleSetStopPrice, handleAddInvestment, handleClear]);
+  }, [handleExecute, handleEndTrade, handleAutoPilot, handleHedge, handleSetStopPrice, handleAddInvestment, handleClear]);
 
   return (
     <div className="fixed inset-0 flex flex-col bg-[#f5f6fa] dark:bg-[#0f0f0f] text-[#222] dark:text-gray-200 overflow-hidden w-full">
@@ -1174,10 +1232,10 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
                     const isIntervalWise = signalsTableViewMode === "intervalWise";
                     const columns = isIntervalWise
                       ? INTERVALS.flatMap((iv, gIdx) =>
-                          ROW_LABELS.map((label) => ({ iv, label, rowIdx: ROW_LABELS.indexOf(label), groupKey: iv, groupIndex: gIdx }))
+                          ROW_LABELS.map((label) => ({ iv, label, rowIdx: ROW_LABEL_TO_DATA_INDEX[label] ?? 0, groupKey: iv, groupIndex: gIdx }))
                         )
                       : ROW_LABELS.flatMap((label, gIdx) =>
-                          INTERVALS.map((iv) => ({ iv, label, rowIdx: ROW_LABELS.indexOf(label), groupKey: label, groupIndex: gIdx }))
+                          INTERVALS.map((iv) => ({ iv, label, rowIdx: ROW_LABEL_TO_DATA_INDEX[label] ?? 0, groupKey: label, groupIndex: gIdx }))
                         );
                     const groupColors = isIntervalWise ? INTERVAL_GROUP_COLORS : ROW_GROUP_COLORS;
                     const getGroupColor = (groupIndex) => groupColors[groupIndex] ?? "";
@@ -1294,6 +1352,18 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
                   label="Zoom buttons"
                   className="min-w-[32px] min-h-[32px] flex items-center justify-center rounded-lg bg-teal-700/80 hover:bg-teal-600 text-white text-xs font-bold disabled:opacity-40"
                 />
+                <button
+                  type="button"
+                  onClick={() => setActionModal({ open: true, type: "autoPilot" })}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-semibold shadow-md hover:shadow-lg transition-all border border-violet-400/50 animate-pulse hover:animate-none focus:ring-2 focus:ring-violet-400 focus:ring-offset-2 focus:ring-offset-[#181818]"
+                  title="Enable Auto-Pilot (code runs on its own)"
+                >
+                  <span className="relative flex h-4 w-4">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-violet-400 opacity-60" />
+                    <span className="relative inline-flex rounded-full h-4 w-4 bg-violet-300" />
+                  </span>
+                  Auto-Pilot
+                </button>
                 <button
                   type="button"
                   onClick={() => setActionModal({ open: true, type: "endTrade" })}
