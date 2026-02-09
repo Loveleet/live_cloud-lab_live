@@ -338,8 +338,18 @@ const [selectedIntervals, setSelectedIntervals] = useState(() => {
   
 
   const refreshAllData = useCallback(async () => {
+    const apiBase = getApiBaseUrl();
+    const isGitHubPages = typeof window !== "undefined" && window.location?.hostname?.includes("github.io");
+    
+    // Debug logging
+    if (isGitHubPages) {
+      console.log("[DEBUG] GitHub Pages - API base URL:", apiBase || "(empty - waiting for api-config.json)");
+      console.log("[DEBUG] Full API URL for /api/trades:", apiBase ? api("/api/trades") : "(no base)");
+    }
+    
     // On GitHub Pages with no API configured, skip requests to avoid 404 spam (getApiBaseUrl() updates after api-config.json loads)
-    if (typeof window !== "undefined" && window.location?.hostname?.includes("github.io") && !getApiBaseUrl()) {
+    if (isGitHubPages && !apiBase) {
+      console.log("[DEBUG] Skipping API calls - waiting for api-config.json to load");
       setTradeData([]);
       setMachines([]);
       setLogData([]);
@@ -352,14 +362,30 @@ const [selectedIntervals, setSelectedIntervals] = useState(() => {
     }
     try {
       setApiUnreachable(false);
-      const tradeRes = await fetch(api("/api/trades"));
+      const tradesUrl = api("/api/trades");
+      console.log("[DEBUG] Fetching trades from:", tradesUrl);
+      const tradeRes = await fetch(tradesUrl);
+      console.log("[DEBUG] Trades response status:", tradeRes.status, tradeRes.ok ? "OK" : "FAILED");
+      if (!tradeRes.ok) {
+        const errorText = await tradeRes.text().catch(() => "");
+        console.error("[DEBUG] Trades fetch failed:", tradeRes.status, errorText.substring(0, 200));
+      }
       const tradeJson = tradeRes.ok ? await tradeRes.json() : { trades: [] };
       const trades = Array.isArray(tradeJson.trades) ? tradeJson.trades : [];
+      console.log("[DEBUG] Trades received:", trades.length, "rows");
       setDemoDataHint(tradeJson._meta?.demoData ? tradeJson._meta.hint || null : null);
 
-      const machinesRes = await fetch(api("/api/machines"));
+      const machinesUrl = api("/api/machines");
+      console.log("[DEBUG] Fetching machines from:", machinesUrl);
+      const machinesRes = await fetch(machinesUrl);
+      console.log("[DEBUG] Machines response status:", machinesRes.status, machinesRes.ok ? "OK" : "FAILED");
+      if (!machinesRes.ok) {
+        const errorText = await machinesRes.text().catch(() => "");
+        console.error("[DEBUG] Machines fetch failed:", machinesRes.status, errorText.substring(0, 200));
+      }
       const machinesJson = machinesRes.ok ? await machinesRes.json() : { machines: [] };
       const machinesList = Array.isArray(machinesJson.machines) ? machinesJson.machines : [];
+      console.log("[DEBUG] Machines received:", machinesList.length, "machines");
 
       // Use base path so logs.json works on GitHub Pages (e.g. /lab_live/logs.json)
       const logsPath = `${(import.meta.env.BASE_URL || "/").replace(/\/?$/, "/")}logs.json`;
@@ -421,13 +447,22 @@ const [selectedIntervals, setSelectedIntervals] = useState(() => {
       console.log("[DEBUG] Counts by machine from trades:", countsByMachine);
       console.log("[DEBUG] Selected machines:", allMachinesSelected);
     } catch (error) {
+      console.error("[DEBUG] refreshAllData error:", error.name, error.message);
+      console.error("[DEBUG] Error stack:", error.stack);
       setTradeData([]);
       setDemoDataHint(null);
       // On GitHub Pages, tunnel URL may have changed (ERR_NAME_NOT_RESOLVED = old URL). Refetch api-config and retry.
-      if (typeof window !== "undefined" && window.location?.hostname?.includes("github.io") && getApiBaseUrl()) {
+      if (typeof window !== "undefined" && window.location?.hostname?.includes("github.io")) {
+        const currentApiBase = getApiBaseUrl();
+        console.log("[DEBUG] GitHub Pages error - current API base:", currentApiBase);
         setApiUnreachable(true);
         if (typeof loadRuntimeApiConfig === "function") {
-          loadRuntimeApiConfig().then(() => setTimeout(() => refreshAllData(), 4000));
+          console.log("[DEBUG] Reloading api-config.json...");
+          loadRuntimeApiConfig().then(() => {
+            const newApiBase = getApiBaseUrl();
+            console.log("[DEBUG] After reload - new API base:", newApiBase);
+            setTimeout(() => refreshAllData(), 4000);
+          });
         }
       }
     }
@@ -1427,6 +1462,33 @@ useEffect(() => {
                       <strong className="block mb-2">API unreachable (tunnel URL may have changed)</strong>
                       <p className="mb-2">The current API URL could not be resolved (e.g. cloud restarted and got a new tunnel URL). The app will refetch the config and retry in a few seconds.</p>
                       <p className="text-xs">If it still fails: on the cloud run the tunnel (<code className="bg-amber-200/60 dark:bg-amber-800/60 px-1 rounded">/opt/apps/lab-trading-dashboard/scripts/cron-tunnel-update.sh</code> or start cloudflared), wait 2–3 min, then <strong>hard-refresh this page</strong> (Ctrl+Shift+R).</p>
+                    </div>
+                  )}
+                  {/* Debug panel for GitHub Pages */}
+                  {typeof window !== "undefined" && window.location?.hostname?.includes("github.io") && (
+                    <div className="mb-4 p-3 rounded-lg bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-xs font-mono">
+                      <strong className="block mb-1">Debug Info:</strong>
+                      <div>API Base: {getApiBaseUrl() || "(empty - waiting for api-config.json)"}</div>
+                      <div>Page URL: {window.location.href}</div>
+                      <div>Full API URL: {getApiBaseUrl() ? api("/api/trades") : "N/A"}</div>
+                      <button 
+                        onClick={async () => {
+                          const url = api("/api/server-info");
+                          console.log("[DEBUG] Testing server-info:", url);
+                          try {
+                            const res = await fetch(url);
+                            const data = await res.json();
+                            console.log("[DEBUG] Server info:", data);
+                            alert(JSON.stringify(data, null, 2));
+                          } catch (e) {
+                            console.error("[DEBUG] Server info error:", e);
+                            alert("Error: " + e.message);
+                          }
+                        }}
+                        className="mt-2 px-2 py-1 bg-blue-500 text-white rounded text-xs"
+                      >
+                        Test /api/server-info
+                      </button>
                     </div>
                   )}
                   {typeof window !== "undefined" && window.location?.hostname?.includes("github.io") && !apiBaseForBanner && !apiUnreachable && (

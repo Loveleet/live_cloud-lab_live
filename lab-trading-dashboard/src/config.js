@@ -59,28 +59,52 @@ function loadRuntimeApiConfig() {
   }
   return fetch(fetchUrl)
     .then((res) => {
-      if (window.location?.hostname?.includes("github.io") && !res.ok) {
-        console.log("[LAB] api-config.json not found (", res.status, "). Set API_BASE_URL secret and run Deploy frontend to GitHub Pages.");
+      if (window.location?.hostname?.includes("github.io")) {
+        if (!res.ok) {
+          console.error(`[LAB] api-config.json not found (${res.status}). URL tried: ${url}`);
+          console.error("[LAB] Set API_BASE_URL secret and run Deploy frontend to GitHub Pages.");
+          // Try fallback: check if file exists at root (old deploy structure)
+          if (res.status === 404 && basePath) {
+            const rootUrl = new URL("api-config.json", window.location.origin).href;
+            console.log("[LAB] Trying fallback location:", rootUrl);
+            return fetch(rootUrl + "?t=" + Date.now()).catch(() => res);
+          }
+        } else {
+          console.log("[LAB] api-config.json found, parsing...");
+        }
       }
       return res.ok ? res.json() : null;
     })
     .then((j) => {
-      if (!j) return;
+      if (!j) {
+        if (window.location?.hostname?.includes("github.io")) {
+          console.warn("[LAB] api-config.json is empty or invalid. Using build-time default if available.");
+        }
+        return;
+      }
       // Support both apiBaseUrl and tunnelUrl (e.g. from /api/tunnel-url)
       const raw = typeof j.apiBaseUrl === "string" ? j.apiBaseUrl : (typeof j.tunnelUrl === "string" ? j.tunnelUrl : "");
       const url = raw.replace(/\/$/, "").trim();
       if (url) {
         const changed = runtimeApiBaseUrl !== url;
         runtimeApiBaseUrl = url;
-        if (window.location?.hostname?.includes("github.io")) console.log("[LAB] api-config.json loaded, API base:", url);
-        if (changed) window.dispatchEvent(new CustomEvent("api-config-loaded"));
+        if (window.location?.hostname?.includes("github.io")) {
+          console.log("[LAB] ✅ api-config.json loaded, API base:", url);
+        }
+        if (changed) {
+          console.log("[LAB] API base changed, triggering refresh");
+          window.dispatchEvent(new CustomEvent("api-config-loaded"));
+        }
       } else if (window.location?.hostname?.includes("github.io") && !loggedEmptyOnce) {
         loggedEmptyOnce = true;
-        console.log("[LAB] api-config.json has empty apiBaseUrl/tunnelUrl. Set API_BASE_URL secret: https://github.com/Loveleet/lab_live/settings/secrets/actions then run Actions → Update API config (or Deploy frontend to GitHub Pages).");
+        console.warn("[LAB] api-config.json has empty apiBaseUrl/tunnelUrl. Set API_BASE_URL secret: https://github.com/Loveleet/lab_live/settings/secrets/actions then run Actions → Update API config (or Deploy frontend to GitHub Pages).");
       }
     })
-    .catch(() => {
-      if (window.location?.hostname?.includes("github.io")) console.log("[LAB] api-config.json fetch failed. Set API_BASE_URL secret and run Deploy workflow.");
+    .catch((err) => {
+      if (window.location?.hostname?.includes("github.io")) {
+        console.error("[LAB] api-config.json fetch failed:", err.message);
+        console.error("[LAB] Set API_BASE_URL secret and run Deploy workflow.");
+      }
     });
 }
 
@@ -109,7 +133,18 @@ export { getApiBaseUrl, loadRuntimeApiConfig };
 
 export function api(path) {
   const base = getApiBaseUrl();
-  return base ? `${base.replace(/\/$/, "")}${path.startsWith("/") ? path : `/${path}`}` : path;
+  const isGitHubPages = typeof window !== "undefined" && window.location?.hostname?.includes("github.io");
+  if (!base) {
+    if (isGitHubPages) {
+      console.warn("[api()] No API base URL — api-config.json may not have loaded yet");
+    }
+    return path; // Relative path (same origin)
+  }
+  const fullUrl = `${base.replace(/\/$/, "")}${path.startsWith("/") ? path : `/${path}`}`;
+  if (isGitHubPages) {
+    console.log(`[api()] Built URL: ${fullUrl} (base: ${base}, path: ${path})`);
+  }
+  return fullUrl;
 }
 
 /** Base URL for the signals API (api_signals.py). On localhost we call local Python (5001); otherwise same as main API. */
