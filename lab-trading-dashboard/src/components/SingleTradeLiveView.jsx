@@ -1182,7 +1182,7 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
                     const groupColors = isIntervalWise ? INTERVAL_GROUP_COLORS : ROW_GROUP_COLORS;
                     const getGroupColor = (groupIndex) => groupColors[groupIndex] ?? "";
                     return (
-                      <table className="w-full border-collapse text-[10px] sm:text-xs">
+                      <table className="w-full border-collapse" style={{ fontSize: "1em" }}>
                         <thead className="sticky top-0 bg-gray-100 dark:bg-gray-800 z-10">
                           <tr>
                             <th className="border border-gray-300 dark:border-gray-600 px-1 py-0.5 text-left font-semibold text-gray-700 dark:text-gray-300 whitespace-nowrap min-w-[80px]">Signal</th>
@@ -1240,7 +1240,7 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
                     key={key}
                     className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gradient-to-br from-gray-50 to-white dark:from-[#1e1e1e] dark:to-[#252525] p-3 shadow-sm hover:shadow-md hover:border-teal-400/50 dark:hover:border-teal-500/50 transition-all"
                   >
-                    <div className="text-[10px] sm:text-xs font-semibold uppercase tracking-wide text-teal-700 dark:text-teal-400 mb-1 truncate" title={key.replace(/_/g, " ")}>
+                    <div className="font-semibold uppercase tracking-wide text-teal-700 dark:text-teal-400 mb-1 truncate" style={{ fontSize: "1em" }} title={key.replace(/_/g, " ")}>
                       {key.replace(/_/g, " ")}
                     </div>
                     <div className="font-medium text-[#222] dark:text-gray-200 break-words leading-snug max-h-14 overflow-hidden" style={{ fontSize: "1em" }} title={stripHtml(row[key])}>
