@@ -373,7 +373,8 @@ const ZOOM_KEYS = {
   backRight: "singleTradeLiveView_zoom_backRight",
   chart: "singleTradeLiveView_zoom_chart",
 };
-const ZOOM_CONFIG = { default: 100, min: 70, max: 150, step: 10 };
+// Allow a wider zoom range so font/size adjustments are more noticeable
+const ZOOM_CONFIG = { default: 100, min: 50, max: 220, step: 10 };
 
 function InfoFieldsModal({ orderedKeys, allKeys, visibleKeys, setVisibleKeys, setFieldOrder, onClose }) {
   const [dragIndex, setDragIndex] = useState(null);
@@ -526,6 +527,112 @@ function SectionOrderModal({ sectionOrder, setSectionOrder, onClose }) {
           ))}
         </ul>
         <div className="mt-4 flex justify-end">
+          <button type="button" onClick={onClose} className="px-4 py-2 rounded bg-teal-600 text-white">
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BinanceColumnsModal({ columns, setColumns, visibility, setVisibility, onClose }) {
+  const [dragIndex, setDragIndex] = useState(null);
+  const [overIndex, setOverIndex] = useState(null);
+
+  const handleDragStart = (e, index) => {
+    setDragIndex(index);
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", String(index));
+  };
+  const handleDragOver = (e, index) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setOverIndex(index);
+  };
+  const handleDragLeave = () => setOverIndex(null);
+  const handleDrop = (e, toIndex) => {
+    e.preventDefault();
+    setOverIndex(null);
+    if (dragIndex == null) return;
+    const fromIndex = dragIndex;
+    setDragIndex(null);
+    if (fromIndex === toIndex) return;
+    const next = [...columns];
+    const [removed] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, removed);
+    setColumns(next);
+  };
+  const handleDragEnd = () => {
+    setDragIndex(null);
+    setOverIndex(null);
+  };
+
+  const setVisible = (col, value) => {
+    setVisibility((prev) => ({ ...prev, [col]: value }));
+  };
+  const showAll = () => {
+    setVisibility((prev) => {
+      const next = { ...prev };
+      columns.forEach((c) => (next[c] = true));
+      return next;
+    });
+  };
+
+  const list = columns.length ? columns : [];
+  const baseLabels = list.map((col) =>
+    col === "__actions__" ? "Actions" : col.replace(/([A-Z])/g, " $1").trim()
+  );
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+      <div
+        className="bg-white dark:bg-[#222] rounded-xl p-6 max-w-2xl w-[90vw] shadow-xl max-h-[85vh] overflow-hidden flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="font-semibold text-xl mb-1">Binance columns</h3>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+          Drag to reorder; check or uncheck to show or hide columns.
+        </p>
+        <ul className="space-y-1 overflow-auto flex-1 min-h-0 pr-2">
+          {list.map((col, index) => {
+            const baseLabel = baseLabels[index];
+            const label =
+              col === "__actions__"
+                ? baseLabel
+                : formatSignalName(baseLabel, baseLabels);
+            const visible = visibility[col] !== false;
+            return (
+              <li
+                key={col}
+                draggable
+                onDragStart={(e) => handleDragStart(e, index)}
+                onDragOver={(e) => handleDragOver(e, index)}
+                onDragLeave={handleDragLeave}
+                onDrop={(e) => handleDrop(e, index)}
+                onDragEnd={handleDragEnd}
+                className={`flex items-center gap-3 py-2.5 px-3 rounded border cursor-grab active:cursor-grabbing ${
+                  overIndex === index ? "border-teal-500 bg-teal-500/10" : "border-transparent hover:bg-gray-100 dark:hover:bg-gray-800"
+                } ${dragIndex === index ? "opacity-60" : ""}`}
+              >
+                <span className="text-gray-400 select-none shrink-0" title="Drag to reorder">⋮⋮</span>
+                <input
+                  type="checkbox"
+                  id={`binance_${col}`}
+                  checked={visible}
+                  onChange={() => setVisible(col, !visible)}
+                  className="h-4 w-4 text-teal-600 shrink-0"
+                />
+                <label htmlFor={`binance_${col}`} className="cursor-pointer flex-1 font-medium truncate" title={label}>
+                  {label}
+                </label>
+              </li>
+            );
+          })}
+        </ul>
+        <div className="mt-4 flex justify-end gap-2 shrink-0">
+          <button type="button" onClick={showAll} className="px-4 py-2 rounded bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+            Show all
+          </button>
           <button type="button" onClick={onClose} className="px-4 py-2 rounded bg-teal-600 text-white">
             Done
           </button>
@@ -2236,6 +2343,43 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
     (typeof rawTrade.exist_in_exchange === "string" && parseFloat(rawTrade.exist_in_exchange) > 0)
   );
   const [exchangePositionData, setExchangePositionData] = useState(null);
+
+  // --- Binance Data table settings: column order + visibility (+ actions column) ---
+  const [binanceColumns, setBinanceColumns] = useState([]);
+  const [binanceColumnVisibility, setBinanceColumnVisibility] = useState({});
+  const [binanceSettingsOpen, setBinanceSettingsOpen] = useState(false);
+
+  // Precompute effective/visible Binance columns + labels so JSX stays simple.
+  const hasBinancePositions = !!exchangePositionData?.positions?.length;
+  const binanceDefaultColumns = hasBinancePositions
+    ? ["__actions__", ...Object.keys(exchangePositionData.positions[0])]
+    : [];
+  const binanceEffectiveColumns = (binanceColumns.length ? binanceColumns : binanceDefaultColumns);
+  const binanceVisibleKeys = binanceEffectiveColumns.filter(
+    (key) => binanceColumnVisibility[key] !== false
+  );
+  const binanceVisibleLabels = binanceVisibleKeys.map((key) =>
+    key === "__actions__" ? "Actions" : key.replace(/([A-Z])/g, " $1").trim()
+  );
+
+  useEffect(() => {
+    if (exchangePositionData?.positions?.length) {
+      const keys = Object.keys(exchangePositionData.positions[0]);
+      setBinanceColumns((prev) => {
+        if (Array.isArray(prev) && prev.length > 0) return prev;
+        // Special first column for the per-row action buttons
+        return ["__actions__", ...keys];
+      });
+      setBinanceColumnVisibility((prev) => {
+        const next = { ...prev };
+        ["__actions__", ...keys].forEach((k) => {
+          if (next[k] === undefined) next[k] = true;
+        });
+        return next;
+      });
+    }
+  }, [exchangePositionData]);
+
   const EXCHANGE_POLL_MS = 60 * 1000; // 1 min
   useEffect(() => {
     if (!isExistInExchange || !signalSymbol) {
@@ -2323,16 +2467,6 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
     } catch {}
     return 50;
   });
-  const [backSplitPercent, setBackSplitPercent] = useState(() => {
-    try {
-      const v = localStorage.getItem(BACK_SPLIT_KEY);
-      if (v != null) {
-        const n = parseInt(v, 10);
-        if (!Number.isNaN(n)) return Math.max(20, Math.min(80, n));
-      }
-    } catch {}
-    return 50;
-  });
   const [signalsTableViewMode, setSignalsTableViewMode] = useState(() => {
     try {
       const v = localStorage.getItem(SIGNALS_VIEW_MODE_KEY);
@@ -2346,14 +2480,11 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
   useEffect(() => {
     localStorage.setItem(SIGNALS_VIEW_MODE_KEY, signalsTableViewMode);
   }, [signalsTableViewMode]);
-  useEffect(() => {
-    localStorage.setItem(BACK_SPLIT_KEY, String(backSplitPercent));
-  }, [backSplitPercent]);
+  // backSplitPercent is no longer used (Binance Data is a single panel now), so we stop updating it.
 
   const [zoomInfoLeft, zoomOutInfoLeft, zoomInInfoLeft] = useZoomLevel(ZOOM_KEYS.infoLeft);
   const [zoomInfoGrid, zoomOutInfoGrid, zoomInInfoGrid] = useZoomLevel(ZOOM_KEYS.infoGrid);
   const [zoomBackLeft, zoomOutBackLeft, zoomInBackLeft] = useZoomLevel(ZOOM_KEYS.backLeft);
-  const [zoomBackRight, zoomOutBackRight, zoomInBackRight] = useZoomLevel(ZOOM_KEYS.backRight);
   const [zoomChart, zoomOutChart, zoomInChart] = useZoomLevel(ZOOM_KEYS.chart);
   const [alertRules, setAlertRules] = useState(() => {
     try {
@@ -2874,33 +3005,77 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
         </section>
           );
           if (id === "binanceData") return (
-        <section key="binanceData" className="rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-[#181a20] overflow-hidden shadow-lg flex-shrink-0 flex flex-col">
+        <section key="binanceData" className="rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-[#181a20] overflow-hidden shadow-lg flex-shrink-0 flex flex-col relative">
           <div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-4 py-2.5 bg-gradient-to-r from-teal-800 to-teal-700 text-white font-semibold flex-shrink-0">
             <span className="text-sm sm:text-base">Binance Data</span>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-white/90 text-xs mr-1">Zoom:</span>
+              <ZoomControls
+                onDecrease={zoomOutBackLeft}
+                onIncrease={zoomInBackLeft}
+                current={zoomBackLeft}
+                label="Zoom Binance table"
+                className="min-w-[32px] min-h-[32px] flex items-center justify-center rounded-lg bg-white/20 hover:bg-white/30 text-white text-xs font-bold disabled:opacity-40"
+              />
+              {exchangePositionData?.positions?.length ? (
+                <button
+                  type="button"
+                  onClick={() => setBinanceSettingsOpen((open) => !open)}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white/20 hover:bg-white/30 text-xs font-semibold shadow-sm border border-teal-200/60"
+                  title="Reorder / show or hide Binance columns"
+                >
+                  ⚙
+                  <span>Settings</span>
+                </button>
+              ) : null}
+            </div>
           </div>
           <div
-            className="flex min-h-0 p-3 sm:p-4 gap-0 flex-shrink-0"
+            className="flex min-h-0 p-3 sm:p-4 flex-shrink-0"
             style={{ height: backDataHeight }}
           >
             <div
-              className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl flex flex-col items-center justify-center text-gray-500 bg-gray-50 dark:bg-[#0d0d0d] overflow-hidden flex-shrink-0"
-              style={{ width: `${backSplitPercent}%`, minHeight: backLeftHeight, fontSize: `${(zoomBackLeft / 100) * 14}px` }}
+              className="w-full border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl flex flex-col items-center justify-center text-gray-500 bg-gray-50 dark:bg-[#0d0d0d] overflow-hidden flex-shrink-0"
+              style={{ minHeight: backLeftHeight }}
             >
-              <div className="flex flex-col gap-2 mb-2 flex-wrap justify-center p-2 overflow-auto">
+              <div className="flex flex-col gap-2 mb-2 flex-wrap justify-center p-2 overflow-auto w-full">
                 {!isExistInExchange ? (
                   <span className="text-gray-500 dark:text-gray-400 text-center">Trade not in exchange — no live data</span>
                 ) : exchangePositionData?.ok === false ? (
                   <span className="text-amber-600 dark:text-amber-400 text-center">{exchangePositionData?.error || "Failed to fetch"}</span>
-                ) : exchangePositionData?.positions?.length ? (
-                  <div className="overflow-auto w-full">
-                    <table className="w-full border-collapse border border-gray-300 dark:border-gray-600 text-xs">
+                ) : hasBinancePositions ? (
+                  <div className="relative overflow-auto w-full">
+                    {binanceSettingsOpen && (
+                      <BinanceColumnsModal
+                        columns={binanceEffectiveColumns}
+                        setColumns={setBinanceColumns}
+                        visibility={binanceColumnVisibility}
+                        setVisibility={setBinanceColumnVisibility}
+                        onClose={() => setBinanceSettingsOpen(false)}
+                      />
+                    )}
+                    <table
+                      className="w-full border-collapse border border-gray-300 dark:border-gray-600"
+                      style={{ fontSize: `${(zoomBackLeft / 100) * 14}px` }}
+                    >
                       <thead>
                         <tr className="bg-teal-100 dark:bg-teal-900/40">
-                          {exchangePositionData.positions[0] && Object.keys(exchangePositionData.positions[0]).map((k) => (
-                            <th key={k} className="border border-gray-300 dark:border-gray-600 px-2 py-1 text-left font-medium text-teal-800 dark:text-teal-200 whitespace-nowrap">
-                              {k.replace(/([A-Z])/g, " $1").trim()}
-                            </th>
-                          ))}
+                          {binanceVisibleKeys.map((key, idx) => {
+                            const baseLabel = binanceVisibleLabels[idx];
+                            const headerLabel =
+                              key === "__actions__"
+                                ? baseLabel
+                                : formatSignalName(baseLabel, binanceVisibleLabels);
+                            return (
+                              <th
+                                key={key}
+                                className="border border-gray-300 dark:border-gray-600 px-2 py-1 text-left font-medium text-teal-800 dark:text-teal-200 whitespace-nowrap max-w-[80px] truncate"
+                                title={baseLabel}
+                              >
+                                {headerLabel}
+                              </th>
+                            );
+                          })}
                         </tr>
                       </thead>
                       <tbody>
@@ -2917,14 +3092,84 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
                             if (typeof val === "object") return JSON.stringify(val);
                             return String(val);
                           };
+                          const keysToRender = binanceVisibleKeys;
                           return (
                             <tr key={idx} className="border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1a1a1a] hover:bg-gray-50 dark:hover:bg-[#252525]">
-                              {Object.keys(pos).map((k) => {
+                              {keysToRender.map((key) => {
+                                if (key === "__actions__") {
+                                  return (
+                                    <td
+                                      key="__actions__"
+                                      className="border border-gray-200 dark:border-gray-700 px-2 py-1 whitespace-nowrap"
+                                      style={{ fontSize: "10px" }}
+                                    >
+                                      <div className="flex flex-wrap gap-1">
+                                        <button
+                                          type="button"
+                                          onClick={() => setActionModal({ open: true, type: "autoPilot" })}
+                                          className="px-2 py-0.5 rounded bg-violet-600 hover:bg-violet-700 text-white text-[10px] font-semibold"
+                                          title="Enable Auto-Pilot"
+                                        >
+                                          Auto
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => setActionModal({ open: true, type: "endTrade" })}
+                                          className="px-2 py-0.5 rounded bg-red-600 hover:bg-red-700 text-white text-[10px] font-semibold"
+                                          title="End Trade"
+                                        >
+                                          End
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => setActionModal({ open: true, type: "hedge" })}
+                                          className="px-2 py-0.5 rounded bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-semibold"
+                                          title="Hedge"
+                                        >
+                                          Hedge
+                                        </button>
+                                        <div className="flex items-center gap-1">
+                                          <input
+                                            type="text"
+                                            value={stopPrice}
+                                            onChange={(e) => setStopPrice(e.target.value)}
+                                            placeholder="Stop"
+                                            className="border border-gray-400 dark:border-gray-600 rounded px-1 py-0.5 bg-white dark:bg-[#222] text-[10px] w-16"
+                                          />
+                                          <button
+                                            type="button"
+                                            onClick={() => setActionModal({ open: true, type: "setStopPrice" })}
+                                            className="px-2 py-0.5 rounded bg-gray-600 hover:bg-gray-700 text-white text-[10px] font-semibold"
+                                            title="Set Stop Price"
+                                          >
+                                            Set
+                                          </button>
+                                        </div>
+                                        <button
+                                          type="button"
+                                          onClick={() => setActionModal({ open: true, type: "addInvestment" })}
+                                          className="px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-semibold"
+                                          title="Add Investment"
+                                        >
+                                          +Inv
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => setActionModal({ open: true, type: "clear" })}
+                                          className="px-2 py-0.5 rounded bg-slate-600 hover:bg-slate-700 text-white text-[10px] font-semibold"
+                                          title="Clear"
+                                        >
+                                          Clear
+                                        </button>
+                                      </div>
+                                    </td>
+                                  );
+                                }
                                 const pl = parseFloat(pos.unRealizedProfit || 0);
-                                const plClass = k === "unRealizedProfit" ? (pl < 0 ? "text-red-600 font-medium" : "text-green-600 font-medium") : "";
+                                const plClass = key === "unRealizedProfit" ? (pl < 0 ? "text-red-600 font-medium" : "text-green-600 font-medium") : "";
                                 return (
-                                  <td key={k} className={`border border-gray-200 dark:border-gray-700 px-2 py-1 ${plClass}`}>
-                                    {formatVal(k, pos[k])}
+                                  <td key={key} className={`border border-gray-200 dark:border-gray-700 px-2 py-1 ${plClass}`}>
+                                    {formatVal(key, pos[key])}
                                   </td>
                                 );
                               })}
@@ -2939,85 +3184,6 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
                 ) : (
                   <span className="text-gray-500 dark:text-gray-400 text-center">Loading exchange data…</span>
                 )}
-                <ZoomControls
-                  onDecrease={zoomOutBackLeft}
-                  onIncrease={zoomInBackLeft}
-                  current={zoomBackLeft}
-                  label="Zoom left"
-                  className="min-w-[32px] min-h-[32px] flex items-center justify-center rounded-lg bg-gray-300 hover:bg-gray-400 dark:bg-gray-600 dark:hover:bg-gray-500 disabled:opacity-40 text-gray-800 dark:text-white text-xs font-bold self-center"
-                />
-              </div>
-            </div>
-            <WidthDragger leftPercent={backSplitPercent} onChange={setBackSplitPercent} min={20} max={80} />
-            <div className="min-w-0 flex-1 flex flex-wrap items-center gap-3 sm:gap-4 overflow-auto" style={{ width: `${100 - backSplitPercent}%`, fontSize: `${(zoomBackRight / 100) * 14}px` }}>
-              <div className="flex items-center gap-2 flex-wrap">
-                <ZoomControls
-                  onDecrease={zoomOutBackRight}
-                  onIncrease={zoomInBackRight}
-                  current={zoomBackRight}
-                  label="Zoom buttons"
-                  className="min-w-[32px] min-h-[32px] flex items-center justify-center rounded-lg bg-teal-700/80 hover:bg-teal-600 text-white text-xs font-bold disabled:opacity-40"
-                />
-                <button
-                  type="button"
-                  onClick={() => setActionModal({ open: true, type: "autoPilot" })}
-                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-semibold shadow-md hover:shadow-lg transition-all border border-violet-400/50 animate-pulse hover:animate-none focus:ring-2 focus:ring-violet-400 focus:ring-offset-2 focus:ring-offset-[#181818]"
-                  title="Enable Auto-Pilot (code runs on its own)"
-                >
-                  <span className="relative flex h-4 w-4">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-violet-400 opacity-60" />
-                    <span className="relative inline-flex rounded-full h-4 w-4 bg-violet-300" />
-                  </span>
-                  Auto-Pilot
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActionModal({ open: true, type: "endTrade" })}
-                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-semibold shadow-md hover:shadow-lg transition-all border border-red-500/50"
-                >
-                  <Square size={18} />
-                  End Trade
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActionModal({ open: true, type: "hedge" })}
-                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-semibold shadow-md hover:shadow-lg transition-all border border-amber-500/50"
-                >
-                  <Shield size={18} />
-                  Hedge
-                </button>
-                <div className="inline-flex items-center gap-2 flex-wrap">
-                  <label className="font-medium text-[#222] dark:text-gray-200">Stop price:</label>
-                  <input
-                    type="text"
-                    value={stopPrice}
-                    onChange={(e) => setStopPrice(e.target.value)}
-                    placeholder="Price"
-                    className="border-2 border-gray-400 dark:border-gray-600 rounded-lg px-3 py-1.5 bg-white dark:bg-[#222] text-[#222] dark:text-white w-28 font-medium"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setActionModal({ open: true, type: "setStopPrice" })}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-600 hover:bg-gray-700 text-white font-medium shadow transition-all"
-                  >
-                    <Crosshair size={16} />
-                    Set
-                  </button>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setActionModal({ open: true, type: "addInvestment" })}
-                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-md hover:shadow-lg transition-all border border-emerald-500/50"
-                >
-                  Add Investment
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActionModal({ open: true, type: "clear" })}
-                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-600 hover:bg-slate-700 text-white font-semibold shadow-md hover:shadow-lg transition-all border border-slate-500/50"
-                >
-                  Clear
-                </button>
               </div>
             </div>
           </div>

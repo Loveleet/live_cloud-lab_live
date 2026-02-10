@@ -1635,7 +1635,7 @@ useEffect(() => {
       <button
         onClick={() =>
           setFontSizeLevel((prev) => {
-            const newLevel = Math.min(20, prev + 1);
+            const newLevel = Math.min(30, prev + 1);
             localStorage.setItem("fontSizeLevel", newLevel);
             return newLevel;
           })

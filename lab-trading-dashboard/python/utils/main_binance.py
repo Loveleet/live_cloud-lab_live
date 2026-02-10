@@ -1,15 +1,24 @@
 import threading
-import pyttsx3
 import platform
+
+# Optional text-to-speech dependency. We don't actually need this for
+# Binance open-position / trading logic, so if it's missing we just
+# disable voice features instead of breaking all imports.
+try:
+    import pyttsx3  # type: ignore
+except ImportError:
+    pyttsx3 = None  # Voice/TTS features will be disabled
+
 # pythoncom is Windows-specific, handle it conditionally
 if platform.system() == 'Windows':
     import pythoncom
 else:
-    # Linux fallback - create dummy pythoncom
+    # Linux/macOS fallback - create dummy pythoncom with no-op methods
     class pythoncom:
         @staticmethod
         def CoInitialize():
             pass
+
         @staticmethod
         def CoUninitialize():
             pass
@@ -22,11 +31,26 @@ from binance.error import ClientError
 import datetime
 import logging
 import numpy as np
-import talib 
+import talib
 import pandas as pd
 import ta
 from openpyxl import load_workbook
-from colorama import init, Fore, Style
+
+# colorama is only used for pretty terminal colors. If it's not installed,
+# we fall back to plain strings so that Binance helpers still work.
+try:
+    from colorama import init, Fore, Style  # type: ignore
+except ImportError:
+    def init(*args, **kwargs):
+        return None
+
+    class _DummyColor:
+        def __getattr__(self, name):
+            return ""
+
+    Fore = _DummyColor()
+    Style = _DummyColor()
+
 import functools
 import time
 
