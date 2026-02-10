@@ -37,13 +37,22 @@ import { useNavigate } from "react-router-dom";
 import moment from "moment";
 
 import * as XLSX from "xlsx";
-import { Home, BarChart, FileText, Menu } from "lucide-react";
+import { Home, BarChart, FileText, Menu, ChevronDown, ChevronRight } from "lucide-react";
+import { apiSignals } from "../config";
 // Remove: Users, X, Plus, Space, ChartGridView (not used in main view)
 
 
 const safeFixed = (val, digits = 2, prefix = "") => {
   const num = parseFloat(val);
   return isNaN(num) ? "N/A" : `${prefix}${num.toFixed(digits)}`;
+};
+
+const getRobustSymbol = (pair) => {
+  if (!pair) return "";
+  let s = String(pair).replace(/<[^>]+>/g, "").replace(/\s+/g, "").replace(/[^A-Z0-9]/gi, "").toUpperCase();
+  if (s.startsWith("BINANCE")) s = s.slice(7);
+  s = s.replace(/PERPETUALCONTRACT|PERP|CHART/gi, "").replace(/\d{6,}$/, "");
+  return s || "";
 };
 
 
@@ -74,70 +83,84 @@ const formatDateOnly = (ts) => {
 };
 
 const formatTradeData = (trade, index) => ({
-  "S No": index + 1,
-  "M.Id": trade.machineid || "N/A",
-  "📋": "copy", // Copy button column
-  Unique_ID: trade.unique_id || "N/A",
-  macd_action: trade.macd_action ?? trade.MACD_Action ?? trade.macdAction ?? "N/A",
-  "Candle_🕒": formatDateTime(trade.candel_time),
-  "Fetcher_🕒": formatDateTime(trade.fetcher_trade_time),
-  "Operator_🕒": formatDateTime(trade.operator_trade_time),
-  Pair: trade.pair
-    ? `<div style="display:flex; flex-direction:column; align-items:center;">
-        <a href="https://www.binance.com/en/futures/${trade.pair}" target="_blank" rel="noopener noreferrer" style="color:#1d4ed8;text-decoration:underline;">${trade.pair}</a>
-        <button onclick="window.open('https://www.tradingview.com/chart/?symbol=BINANCE:${trade.pair}.P', '_blank')" style="margin-top:2px;font-size:10px;padding:2px 6px;background:#eee;border:1px solid #aaa;border-radius:4px;cursor:pointer;">
-          📈 Chart
-        </button>
-      </div>`
-    : "N/A",
-  "⏱️": trade.interval || "N/A",
-  "💼": trade.action || "N/A",
-  Investment: safeFixed(trade.investment, 2, "$"),
-  PL: safeFixed(trade.pl_after_comm, 2),
-  "🛡️_BUY": safeFixed(trade.hedge_buy_pl, 2),
-  "🛡️_SELL": safeFixed(trade.hedge_sell_pl, 2),
-  Type: trade.type || "N/A",
-  "Operator_🕒❌": formatDateTime(trade.operator_close_time),
-  "📡": trade.signalfrom || "N/A",
-  PJ: (() => {
-    const val = trade.profit_journey;
-    // Handle boolean, string boolean, or numeric values
-    const isTrue = val === true || val === "true" || val === 1 || (typeof val === 'string' && parseFloat(val) > 0);
-    return isTrue ? "✅" : "❌";
-  })(),
-  CJ: (() => {
-    const val = trade.commision_journey;
-    // Handle boolean, string boolean, or numeric values  
-    const isTrue = val === true || val === "true" || val === 1 || (typeof val === 'string' && parseFloat(val) > 0);
-    return isTrue ? "✅" : "❌";
-  })(),
-  Stop_Price: safeFixed(trade.stop_price, 6),
-  Save_Price: safeFixed(trade.save_price, 6),
-  Min_Comm: safeFixed(trade.min_comm, 6),
-  "🛡️": parseHedge(trade.hedge) ? "✅ Yes" : "❌ No",
-  "🛡️1-1": parseBoolean(trade.hedge_1_1_bool) ? "✅ Yes" : "❌ No",
-  "🛡️_Order_Size": trade.hedge_order_size || "N/A",
-  "Min_Comm_After_🛡️": safeFixed(trade.min_comm_after_hedge, 6),
-  Min_Profit: safeFixed(trade.min_profit, 2, "$"),
-  Buy_Qty: trade.buy_qty || 0,
-  Buy_Price: safeFixed(trade.buy_price, 6),
-  Buy_PL: safeFixed(trade.buy_pl, 6),
-  Added_Qty: trade.added_qty || "N/A",
-  Sell_Qty: trade.sell_qty || 0,
-  Sell_Price: safeFixed(trade.sell_price, 6),
-  Sell_PL: safeFixed(trade.sell_pl, 6),
-  Close_Price: safeFixed(trade.close_price, 6),
-  Commission: safeFixed(trade.commission, 2, "$"),
-  Date: formatDateOnly(trade.candel_time),
-  Swing1: safeFixed(trade.swing1, 6),
-  Swing2: safeFixed(trade.swing2, 6),
-  Swing3: safeFixed(trade.swing3, 6),
-  Swing4: safeFixed(trade.swing4, 6),
-  Swing5: safeFixed(trade.swing5, 6),
-  HSHighP : safeFixed(trade.hedge_swing_high_point, 6),
-  HSLowP : safeFixed(trade.hedge_swing_low_point, 6),
-  THighP : safeFixed(trade.temp_high_point, 6),
-  TlowP : safeFixed(trade.temp_low_point, 6)
+    "S No": index + 1,
+    "M.Id": trade.machineid || "N/A",
+    "📋": "copy", // Copy button column
+    Unique_ID: trade.unique_id || "N/A",
+    macd_action: trade.macd_action ?? trade.MACD_Action ?? trade.macdAction ?? "N/A",
+    "Candle_🕒": formatDateTime(trade.candel_time),
+    "Fetcher_🕒": formatDateTime(trade.fetcher_trade_time),
+    "Operator_🕒": formatDateTime(trade.operator_trade_time),
+    Pair: trade.pair
+      ? `<div style="display:flex; flex-direction:column; align-items:center;">
+          <a href="https://www.binance.com/en/futures/${trade.pair}" target="_blank" rel="noopener noreferrer" style="color:#1d4ed8;text-decoration:underline;">${trade.pair}</a>
+          <button onclick="window.open('https://www.tradingview.com/chart/?symbol=BINANCE:${trade.pair}.P', '_blank')" style="margin-top:2px;font-size:10px;padding:2px 6px;background:#eee;border:1px solid #aaa;border-radius:4px;cursor:pointer;">
+            📈 Chart
+          </button>
+        </div>`
+      : "N/A",
+    "⏱️": trade.interval || "N/A",
+    "💼": trade.action || "N/A",
+    Investment: safeFixed(trade.investment, 2, "$"),
+    PL: safeFixed(trade.pl_after_comm, 2),
+    "🛡️_BUY": safeFixed(trade.hedge_buy_pl, 2),
+    "🛡️_SELL": safeFixed(trade.hedge_sell_pl, 2),
+    Type: trade.type || "N/A",
+    "Operator_🕒❌": formatDateTime(trade.operator_close_time),
+    "📡": trade.signalfrom || "N/A",
+    PJ: (() => {
+      const val = trade.profit_journey;
+      const isTrue = val === true || val === "true" || val === 1 || (typeof val === 'string' && parseFloat(val) > 0);
+      return isTrue ? "✅" : "❌";
+    })(),
+    CJ: (() => {
+      const val = trade.commision_journey;
+      const isTrue = val === true || val === "true" || val === 1 || (typeof val === 'string' && parseFloat(val) > 0);
+      return isTrue ? "✅" : "❌";
+    })(),
+    Stop_Price: safeFixed(trade.stop_price, 6),
+    Save_Price: safeFixed(trade.save_price, 6),
+    Min_Comm: safeFixed(trade.min_comm, 6),
+    "🛡️": parseHedge(trade.hedge) ? "✅ Yes" : "❌ No",
+    "🛡️1-1": parseBoolean(trade.hedge_1_1_bool) ? "✅ Yes" : "❌ No",
+    "🛡️_Order_Size": trade.hedge_order_size || "N/A",
+    "Min_Comm_After_🛡️": safeFixed(trade.min_comm_after_hedge, 6),
+    Min_Profit: safeFixed(trade.min_profit, 2, "$"),
+    Buy_Qty: trade.buy_qty || 0,
+    Buy_Price: safeFixed(trade.buy_price, 6),
+    Buy_PL: safeFixed(trade.buy_pl, 6),
+    Added_Qty: trade.added_qty || "N/A",
+    Sell_Qty: trade.sell_qty || 0,
+    Sell_Price: safeFixed(trade.sell_price, 6),
+    Sell_PL: safeFixed(trade.sell_pl, 6),
+    Close_Price: safeFixed(trade.close_price, 6),
+    Commission: safeFixed(trade.commission, 2, "$"),
+    Date: formatDateOnly(trade.candel_time),
+    Swing1: safeFixed(trade.swing1, 6),
+    Swing2: safeFixed(trade.swing2, 6),
+    Swing3: safeFixed(trade.swing3, 6),
+    Swing4: safeFixed(trade.swing4, 6),
+    Swing5: safeFixed(trade.swing5, 6),
+    HSHighP: safeFixed(trade.hedge_swing_high_point, 6),
+    HSLowP: safeFixed(trade.hedge_swing_low_point, 6),
+    THighP: safeFixed(trade.temp_high_point, 6),
+    TlowP: safeFixed(trade.temp_low_point, 6),
+    Min_Close: trade.min_close || "N/A",
+    Exist_In_Exchange: parseBoolean(trade.exist_in_exchange) ? "✅ Yes" : "❌ No",
+    Exchange_Position: trade.exchange_position || "N/A",
+    Auto: parseBoolean(trade.auto) ? "✅ Yes" : "❌ No",
+    Created_At: formatDateTime(trade.created_at),
+    Update_Table: parseBoolean(trade.update_table) ? "✅ Yes" : "❌ No",
+    Position_Amt: safeFixed(trade.position_amt, 6),
+    Entry_Price: safeFixed(trade.entry_price, 6),
+    Unrealized_Profit: safeFixed(trade.unrealized_profit, 2),
+    Leverage: trade.leverage_val ?? trade.leverage ?? "N/A",
+    Position_Side: trade.position_side || "N/A",
+    Swing6: safeFixed(trade.swing6, 6),
+    Swing7: safeFixed(trade.swing7, 6),
+    Swing8: safeFixed(trade.swing8, 6),
+    Swing9: safeFixed(trade.swing9, 6),
+    Swing10: safeFixed(trade.swing10, 6)
 });
 
 const TableView =  ({ title, tradeData, clientData, activeSubReport, setActiveSubReport }) => {
@@ -214,6 +237,8 @@ const TableView =  ({ title, tradeData, clientData, activeSubReport, setActiveSu
 
   const [filteredData, setFilteredData] = useState([]);
   const [filteredRawTrades, setFilteredRawTrades] = useState([]);
+  const [exchangeDataBySymbol, setExchangeDataBySymbol] = useState({});
+  const [expandedExchangeRow, setExpandedExchangeRow] = useState(null);
   const [sortConfig, setSortConfig] = React.useState({ key: null, direction: 'asc' });
   const [selectedRow, setSelectedRow] = useState(null);
   const [activeFilters, setActiveFilters] = useState({});
@@ -717,6 +742,38 @@ useEffect(() => {
   setFilteredData(result);
   setFilteredRawTrades(filteredTrades);
 }, [title, tradeData, activeSubReport, clientData, searchInput]);
+
+  // Fetch exchange position for symbols with exist_in_exchange (poll every 60 sec)
+  useEffect(() => {
+    const isExistInExchange = (t) =>
+      t.exist_in_exchange === true || t.exist_in_exchange === "true" || t.exist_in_exchange === 1;
+    const symbols = [...new Set(
+      filteredRawTrades
+        .filter(isExistInExchange)
+        .map((t) => getRobustSymbol(t.pair || t.symbol))
+        .filter(Boolean)
+    )];
+    if (!symbols.length) {
+      setExchangeDataBySymbol({});
+      return;
+    }
+    const fetchAll = async () => {
+      const next = {};
+      for (const sym of symbols) {
+        try {
+          const res = await fetch(apiSignals(`/api/open-position?symbol=${encodeURIComponent(sym)}`));
+          const data = await res.json().catch(() => ({}));
+          next[sym] = data;
+        } catch {
+          next[sym] = { ok: false, error: "Network error" };
+        }
+      }
+      setExchangeDataBySymbol(next);
+    };
+    fetchAll();
+    const id = setInterval(fetchAll, 60 * 1000);
+    return () => clearInterval(id);
+  }, [filteredRawTrades]);
 
   const handleOpenReport = (title, sortedData, fontSizeLevel = 3) => {
     if (!sortedData || sortedData.length === 0) return;
@@ -1296,7 +1353,15 @@ return (
         </thead>
         <tbody>
           {filteredAndSortedData
-            .map((item, rowIndex) => (
+            .map((item, rowIndex) => {
+              const raw = getRawTrade(item);
+              const hasExchange = raw && (raw.exist_in_exchange === true || raw.exist_in_exchange === "true" || raw.exist_in_exchange === 1);
+              const symbol = hasExchange ? getRobustSymbol(raw.pair || raw.symbol) : "";
+              const exData = symbol ? exchangeDataBySymbol[symbol] : null;
+              const expandKey = stripForCompare(item.Unique_ID) || `row-${rowIndex}`;
+              const isExpanded = expandedExchangeRow === expandKey;
+              return (
+              <React.Fragment key={rowIndex}>
               <tr
                 key={rowIndex}
                 className={`cursor-pointer ${
@@ -1417,8 +1482,14 @@ return (
                           min-w-[50px] max-w-[50px] sticky left-0 bg-[#046e7a] text-white z-[5] text-xs
                         `}
                         style={{ fontSize: "inherit" }}
+                        onClick={hasExchange ? (e) => { e.stopPropagation(); setExpandedExchangeRow(prev => prev === expandKey ? null : expandKey); } : undefined}
                       >
-                        {val}
+                        {hasExchange ? (
+                          <span className="inline-flex items-center gap-1 cursor-pointer" title="Toggle exchange data">
+                            {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                            {val}
+                          </span>
+                        ) : val}
                       </td>
                     ) : (
                       <td
@@ -1484,7 +1555,54 @@ return (
                   );
                 })}
               </tr>
-            ))}
+              {isExpanded && hasExchange && (
+                <tr key={`ex-${rowIndex}`} className="bg-gray-100 dark:bg-gray-800">
+                  <td colSpan={columnOrder.length || Object.keys(item).length + 1} className="p-3 align-top">
+                    <div className="text-xs">
+                      <div className="font-semibold text-teal-700 dark:text-teal-400 mb-1">Exchange position: {symbol}</div>
+                      {exData?.ok && exData?.positions?.length ? (
+                        <table className="w-full border border-gray-300 dark:border-gray-600 rounded overflow-hidden">
+                          <thead>
+                            <tr className="bg-teal-100 dark:bg-teal-900/40">
+                              {exData.positions[0] && Object.keys(exData.positions[0]).map((k) => (
+                                <th key={k} className="px-2 py-1 text-left border-b border-gray-300 dark:border-gray-600 font-medium">
+                                  {k.replace(/([A-Z])/g, " $1").trim()}
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {exData.positions.map((pos, idx) => (
+                              <tr key={idx} className="border-b border-gray-200 dark:border-gray-700 last:border-0">
+                                {Object.keys(pos).map((k) => {
+                                  const v = pos[k];
+                                  const num = parseFloat(v);
+                                  const isNum = !isNaN(num) && typeof v !== "boolean";
+                                  const display = v == null ? "\u2014" : isNum
+                                    ? (k.toLowerCase().includes("price") || k.toLowerCase().includes("profit") || k.toLowerCase().includes("margin") ? num.toFixed(4) : num.toFixed(2))
+                                    : String(v);
+                                  const plClass = k === "unRealizedProfit" && isNum ? (num >= 0 ? "text-green-600" : "text-red-600") : "";
+                                  return (
+                                    <td key={k} className={`px-2 py-1 ${plClass}`}>
+                                      {display}
+                                    </td>
+                                  );
+                                })}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      ) : exData?.ok === false ? (
+                        <span className="text-amber-600">{exData?.error || "Failed to fetch"}</span>
+                      ) : (
+                        <span className="text-gray-500">Loading exchange data…</span>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              )}
+              </React.Fragment>
+            );})}
         </tbody>
       </table>
     </div>

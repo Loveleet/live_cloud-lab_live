@@ -10,6 +10,9 @@ let runtimeApiBaseUrl = null;
 let loggedEmptyOnce = false;
 let fetchLoggedOnce = false;
 
+/** When true, localhost uses cloud API instead of local (used after "Use cloud data" when local server is down). */
+let localhostUseCloudFallback = false;
+
 /** True when app is running in browser on localhost (dev). */
 function isLocalhostOrigin() {
   if (typeof window === "undefined") return false;
@@ -168,8 +171,6 @@ if (typeof window !== "undefined" && window.location?.hostname?.includes("github
   }
 }
 
-/** When true, localhost uses cloud API instead of local (used after "Use cloud data" when local server is down). */
-let localhostUseCloudFallback = false;
 export function setLocalhostUseCloudFallback(value) {
   localhostUseCloudFallback = !!value;
 }

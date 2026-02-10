@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Play, Settings, Square, Shield, Crosshair, LayoutGrid } from "lucide-react";
 import { formatTradeData } from "./TableView";
@@ -78,6 +78,8 @@ const CHART_SECTION_HEIGHT_KEY = "singleTradeLiveView_chartSectionHeight";
 const INFO_FIELD_ORDER_KEY = "singleTradeLiveView_infoFieldOrder";
 const SECTION_ORDER_KEY = "singleTradeLiveView_sectionOrder";
 const SIGNALS_VIEW_MODE_KEY = "singleTradeLiveView_signalsViewMode";
+const SIGNAL_ALERT_RULES_KEY = "singleTradeLiveView_signalAlertRules";
+const ALERT_RULE_GROUPS_KEY = "singleTradeLiveView_alertRuleGroups";
 const SECTION_IDS = ["information", "binanceData", "chart"];
 const SECTION_LABELS = { information: "Information", binanceData: "Binance Data", chart: "Chart" };
 
@@ -691,7 +693,16 @@ function stripHtml(str) {
   return (div.textContent || "").trim();
 }
 
-function LiveTradeChartSection({ tradePair, chartSize = { width: 500, height: 400 } }) {
+function LiveTradeChartSection({
+  tradePair,
+  chartSize = { width: 500, height: 400 },
+  alertRules,
+  setAlertRules,
+  alertRuleGroups,
+  setAlertRuleGroups,
+  showAlertSettings,
+  setShowAlertSettings,
+}) {
   const pair = tradePair != null ? String(tradePair) : "";
   const symbols = [getRobustSymbol(pair), "BTCUSDT"];
   const getSetting = (key, def) => {
@@ -717,6 +728,33 @@ function LiveTradeChartSection({ tradePair, chartSize = { width: 500, height: 40
   const [indicators, setIndicators] = useState(getSetting("indicators", defaultIndicators));
   const [source] = useState(getSetting("source", "tradingview"));
   const [chartReady, setChartReady] = useState(false);
+  const importInputRef = useRef(null);
+  const [bulkSignalKeys, setBulkSignalKeys] = useState(() =>
+    SIGNAL_ROWS.map((r) => r.key)
+  );
+  const [bulkIntervals, setBulkIntervals] = useState(() => [...INTERVALS]);
+  const [bulkRows, setBulkRows] = useState(() => [...ROW_LABELS]);
+  const [bulkType, setBulkType] = useState("number");
+  const [bulkBoolValue, setBulkBoolValue] = useState(true);
+  const [bulkStringOperator, setBulkStringOperator] = useState("eq");
+  const [bulkStringValue, setBulkStringValue] = useState("");
+  const [bulkEnumValue, setBulkEnumValue] = useState("BUY");
+  const [bulkNumberOperator, setBulkNumberOperator] = useState(">=");
+  const [bulkNumberThreshold, setBulkNumberThreshold] = useState(0);
+  const [ruleSortKey, setRuleSortKey] = useState("signalKey");
+  const [bulkGroupName, setBulkGroupName] = useState("");
+  const [editingGroupId, setEditingGroupId] = useState(null);
+  const sortedAlertRules = useMemo(() => {
+    const sorted = [...(alertRules || [])];
+    sorted.sort((a, b) => {
+      const va = (a[ruleSortKey] ?? "").toString().toLowerCase();
+      const vb = (b[ruleSortKey] ?? "").toString().toLowerCase();
+      if (va < vb) return -1;
+      if (va > vb) return 1;
+      return 0;
+    });
+    return sorted;
+  }, [alertRules, ruleSortKey]);
 
   const setInterval = (v) => setIntervalState(v);
 
@@ -725,6 +763,77 @@ function LiveTradeChartSection({ tradePair, chartSize = { width: 500, height: 40
       localStorage.setItem(INTERVAL_ORDER_KEY, JSON.stringify(intervalOrder));
     } catch {}
   }, [intervalOrder]);
+
+  const handleExportAlertRules = useCallback(() => {
+    if (typeof window === "undefined" || !window.document) return;
+    try {
+      const payload = {
+        type: "lab_single_trade_alert_rules",
+        version: 1,
+        createdAt: new Date().toISOString(),
+        rules: alertRules || [],
+      };
+      const json = JSON.stringify(payload, null, 2);
+      const blob = new Blob([json], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const ts = new Date().toISOString().replace(/[:.]/g, "-");
+      a.download = `lab-alert-rules-${ts}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error("[AlertRules] Export failed:", e);
+      if (typeof window !== "undefined") {
+        window.alert("Failed to export rules. See console for details.");
+      }
+    }
+  }, [alertRules]);
+
+  const handleImportAlertRulesClick = useCallback(() => {
+    if (importInputRef.current) {
+      importInputRef.current.value = "";
+      importInputRef.current.click();
+    }
+  }, []);
+
+  const handleImportAlertRulesFile = useCallback(
+    (event) => {
+      try {
+        const file = event.target.files && event.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          try {
+            const text = String(e.target?.result || "");
+            const parsed = JSON.parse(text);
+            const rules = Array.isArray(parsed)
+              ? parsed
+              : Array.isArray(parsed?.rules)
+                ? parsed.rules
+                : null;
+            if (!rules) {
+              window.alert("Invalid script file: expected an array of rules.");
+              return;
+            }
+            setAlertRules(rules);
+          } catch (err) {
+            console.error("[AlertRules] Import parse error:", err);
+            window.alert("Failed to parse script file. See console for details.");
+          }
+        };
+        reader.readAsText(file);
+      } catch (err) {
+        console.error("[AlertRules] Import failed:", err);
+        if (typeof window !== "undefined") {
+          window.alert("Failed to import rules. See console for details.");
+        }
+      }
+    },
+    [setAlertRules]
+  );
 
   useEffect(() => {
     try {
@@ -918,6 +1027,1085 @@ function LiveTradeChartSection({ tradePair, chartSize = { width: 500, height: 40
         </div>
       )}
 
+      {showAlertSettings && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+          <div className="bg-[#111] text-white rounded-2xl shadow-2xl max-w-5xl w-[96%] max-h-[90vh] overflow-auto p-4 sm:p-6 border border-violet-700/60">
+            <div className="flex items-center justify-between mb-4 gap-3">
+              <h2 className="text-lg sm:text-xl font-semibold text-violet-200">
+                Signal alert settings
+              </h2>
+              <button
+                type="button"
+                onClick={() => setShowAlertSettings(false)}
+                className="px-2 py-1 rounded-lg bg-gray-700 hover:bg-gray-600 text-sm"
+              >
+                Close
+              </button>
+            </div>
+            <p className="text-xs sm:text-sm text-gray-300 mb-3">
+              Configure when a cell in the signals table should blink (like the Auto-Pilot button). Each rule matches a{" "}
+              <span className="font-semibold text-violet-200">Signal</span>,{" "}
+              <span className="font-semibold text-violet-200">Interval</span> and{" "}
+              <span className="font-semibold text-violet-200">Candle row</span> (current / prev / prior).
+            </p>
+            {/* Bulk creator: select many signals / intervals / rows at once */}
+            <div className="mb-4 p-3 rounded-xl bg-[#181818] border border-violet-700/60 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs font-semibold text-violet-200">
+                    Bulk create rules (multi-select)
+                  </span>
+                  <input
+                    type="text"
+                    placeholder="Group name (optional)"
+                    className="mt-0.5 bg-[#111] border border-gray-700 rounded px-2 py-1 text-[11px] w-56"
+                    value={bulkGroupName}
+                    onChange={(e) => setBulkGroupName(e.target.value)}
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  {editingGroupId && (
+                    <span className="text-[11px] text-amber-300">
+                      Editing group
+                    </span>
+                  )}
+                  <select
+                    className="bg-[#111] border border-gray-700 rounded px-2 py-1 text-xs"
+                    value={bulkType}
+                    onChange={(e) => {
+                      const t = e.target.value;
+                      setBulkType(t);
+                      // Reset defaults when switching type so enum/text make sense
+                      if (t === "buy_sell") setBulkEnumValue("BUY");
+                      else if (t === "inc_dec") setBulkEnumValue("INCREASING");
+                      else if (t === "bull_bear") setBulkEnumValue("BULL");
+                      else if (t === "red_green") setBulkEnumValue("GREEN");
+                      else if (t === "trend_3") setBulkEnumValue("bull_trending");
+                    }}
+                  >
+                    <option value="number">Number</option>
+                    <option value="boolean">True / False</option>
+                    <option value="string">Text (any)</option>
+                    <option value="buy_sell">Buy / Sell / None</option>
+                    <option value="inc_dec">Increasing / Decreasing / None</option>
+                    <option value="bull_bear">Bull / Bear / None</option>
+                    <option value="red_green">Red / Green / None</option>
+                    <option value="trend_3">Bull_trending / Flat / Bear_trending</option>
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-[11px]">
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-semibold text-gray-200">Signals</span>
+                    <div className="flex gap-1">
+                      <button
+                        type="button"
+                        className="px-1.5 py-0.5 rounded bg-gray-700 hover:bg-gray-600"
+                        onClick={() => setBulkSignalKeys(SIGNAL_ROWS.map((r) => r.key))}
+                      >
+                        All
+                      </button>
+                      <button
+                        type="button"
+                        className="px-1.5 py-0.5 rounded bg-gray-700 hover:bg-gray-600"
+                        onClick={() => setBulkSignalKeys([])}
+                      >
+                        None
+                      </button>
+                    </div>
+                  </div>
+                  <div className="max-h-40 overflow-auto space-y-0.5 pr-1">
+                    {SIGNAL_ROWS.map((r) => (
+                      <label key={r.key} className="flex items-center gap-1">
+                        <input
+                          type="checkbox"
+                          className="h-3 w-3"
+                          checked={bulkSignalKeys.includes(r.key)}
+                          onChange={() =>
+                            setBulkSignalKeys((prev) =>
+                              prev.includes(r.key)
+                                ? prev.filter((k) => k !== r.key)
+                                : [...prev, r.key]
+                            )
+                          }
+                        />
+                        <span className="truncate">{r.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-semibold text-gray-200">Intervals</span>
+                    <div className="flex gap-1">
+                      <button
+                        type="button"
+                        className="px-1.5 py-0.5 rounded bg-gray-700 hover:bg-gray-600"
+                        onClick={() => setBulkIntervals([...INTERVALS])}
+                      >
+                        All
+                      </button>
+                      <button
+                        type="button"
+                        className="px-1.5 py-0.5 rounded bg-gray-700 hover:bg-gray-600"
+                        onClick={() => setBulkIntervals([])}
+                      >
+                        None
+                      </button>
+                    </div>
+                  </div>
+                  <div className="space-y-0.5">
+                    {INTERVALS.map((iv) => (
+                      <label key={iv} className="flex items-center gap-1">
+                        <input
+                          type="checkbox"
+                          className="h-3 w-3"
+                          checked={bulkIntervals.includes(iv)}
+                          onChange={() =>
+                            setBulkIntervals((prev) =>
+                              prev.includes(iv)
+                                ? prev.filter((v) => v !== iv)
+                                : [...prev, iv]
+                            )
+                          }
+                        />
+                        <span>{iv}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-semibold text-gray-200">Candle rows</span>
+                    <div className="flex gap-1">
+                      <button
+                        type="button"
+                        className="px-1.5 py-0.5 rounded bg-gray-700 hover:bg-gray-600"
+                        onClick={() => setBulkRows([...ROW_LABELS])}
+                      >
+                        All
+                      </button>
+                      <button
+                        type="button"
+                        className="px-1.5 py-0.5 rounded bg-gray-700 hover:bg-gray-600"
+                        onClick={() => setBulkRows([])}
+                      >
+                        None
+                      </button>
+                    </div>
+                  </div>
+                  <div className="space-y-0.5">
+                    {ROW_LABELS.map((lbl) => (
+                      <label key={lbl} className="flex items-center gap-1">
+                        <input
+                          type="checkbox"
+                          className="h-3 w-3"
+                          checked={bulkRows.includes(lbl)}
+                          onChange={() =>
+                            setBulkRows((prev) =>
+                              prev.includes(lbl)
+                                ? prev.filter((v) => v !== lbl)
+                                : [...prev, lbl]
+                            )
+                          }
+                        />
+                        <span>{lbl}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              {/* Bulk value/condition */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-[11px]">
+                {bulkType === "boolean" ? (
+                  <div className="flex flex-col gap-1">
+                    <span className="uppercase tracking-wide text-gray-400">
+                      Boolean value
+                    </span>
+                    <select
+                      className="bg-[#111] border border-gray-700 rounded px-2 py-1"
+                      value={bulkBoolValue ? "true" : "false"}
+                      onChange={(e) => setBulkBoolValue(e.target.value === "true")}
+                    >
+                      <option value="true">true</option>
+                      <option value="false">false</option>
+                    </select>
+                  </div>
+                ) : bulkType === "string" ? (
+                  <>
+                    <div className="flex flex-col gap-1">
+                      <span className="uppercase tracking-wide text-gray-400">
+                        Condition
+                      </span>
+                      <select
+                        className="bg-[#111] border border-gray-700 rounded px-2 py-1"
+                        value={bulkStringOperator}
+                        onChange={(e) => setBulkStringOperator(e.target.value)}
+                      >
+                        <option value="eq">= equals</option>
+                        <option value="neq">≠ not equal</option>
+                        <option value="contains">contains</option>
+                        <option value="not_contains">not contains</option>
+                        <option value="starts_with">starts with</option>
+                        <option value="ends_with">ends with</option>
+                      </select>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="uppercase tracking-wide text-gray-400">
+                        Text
+                      </span>
+                      <input
+                        type="text"
+                        className="bg-[#111] border border-gray-700 rounded px-2 py-1"
+                        value={bulkStringValue}
+                        onChange={(e) => setBulkStringValue(e.target.value)}
+                      />
+                    </div>
+                  </>
+                ) : bulkType === "buy_sell" ? (
+                  <div className="flex flex-col gap-1">
+                    <span className="uppercase tracking-wide text-gray-400">
+                      Value
+                    </span>
+                    <select
+                      className="bg-[#111] border border-gray-700 rounded px-2 py-1"
+                      value={bulkEnumValue}
+                      onChange={(e) => setBulkEnumValue(e.target.value)}
+                    >
+                      <option value="BUY">BUY</option>
+                      <option value="SELL">SELL</option>
+                      <option value="NONE">NONE</option>
+                    </select>
+                  </div>
+                ) : bulkType === "inc_dec" ? (
+                  <div className="flex flex-col gap-1">
+                    <span className="uppercase tracking-wide text-gray-400">
+                      Value
+                    </span>
+                    <select
+                      className="bg-[#111] border border-gray-700 rounded px-2 py-1"
+                      value={bulkEnumValue}
+                      onChange={(e) => setBulkEnumValue(e.target.value)}
+                    >
+                      <option value="INCREASING">INCREASING</option>
+                      <option value="DECREASING">DECREASING</option>
+                      <option value="NONE">NONE</option>
+                    </select>
+                  </div>
+                ) : bulkType === "bull_bear" ? (
+                  <div className="flex flex-col gap-1">
+                    <span className="uppercase tracking-wide text-gray-400">
+                      Value
+                    </span>
+                    <select
+                      className="bg-[#111] border border-gray-700 rounded px-2 py-1"
+                      value={bulkEnumValue}
+                      onChange={(e) => setBulkEnumValue(e.target.value)}
+                    >
+                      <option value="BULL">BULL</option>
+                      <option value="BEAR">BEAR</option>
+                      <option value="NONE">NONE</option>
+                    </select>
+                  </div>
+                ) : bulkType === "red_green" ? (
+                  <div className="flex flex-col gap-1">
+                    <span className="uppercase tracking-wide text-gray-400">
+                      Value
+                    </span>
+                    <select
+                      className="bg-[#111] border border-gray-700 rounded px-2 py-1"
+                      value={bulkEnumValue}
+                      onChange={(e) => setBulkEnumValue(e.target.value)}
+                    >
+                      <option value="GREEN">GREEN</option>
+                      <option value="RED">RED</option>
+                      <option value="NONE">NONE</option>
+                    </select>
+                  </div>
+                ) : bulkType === "trend_3" ? (
+                  <div className="flex flex-col gap-1">
+                    <span className="uppercase tracking-wide text-gray-400">
+                      Value
+                    </span>
+                    <select
+                      className="bg-[#111] border border-gray-700 rounded px-2 py-1"
+                      value={bulkEnumValue}
+                      onChange={(e) => setBulkEnumValue(e.target.value)}
+                    >
+                      <option value="bull_trending">bull_trending</option>
+                      <option value="flat">flat</option>
+                      <option value="bear_trending">bear_trending</option>
+                    </select>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex flex-col gap-1">
+                      <span className="uppercase tracking-wide text-gray-400">
+                        Condition
+                      </span>
+                      <select
+                        className="bg-[#111] border border-gray-700 rounded px-2 py-1"
+                        value={bulkNumberOperator}
+                        onChange={(e) => setBulkNumberOperator(e.target.value)}
+                      >
+                        <option value=">">&gt;</option>
+                        <option value=">=">&gt;=</option>
+                        <option value="<">&lt;</option>
+                        <option value="<=">&lt;=</option>
+                        <option value="==">=</option>
+                        <option value="!=">≠</option>
+                      </select>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="uppercase tracking-wide text-gray-400">
+                        Number
+                      </span>
+                      <input
+                        type="number"
+                        className="bg-[#111] border border-gray-700 rounded px-2 py-1"
+                        value={bulkNumberThreshold}
+                        onChange={(e) => setBulkNumberThreshold(e.target.value)}
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-xs font-medium"
+                  onClick={() => {
+                    if (!bulkSignalKeys.length || !bulkIntervals.length || !bulkRows.length) {
+                      window.alert("Select at least one Signal, Interval and Candle row.");
+                      return;
+                    }
+                    const now = Date.now();
+                    const groupId =
+                      editingGroupId ||
+                      `grp_${now}_${Math.random().toString(36).slice(2, 8)}`;
+                    const newRules = [];
+                    bulkSignalKeys.forEach((signalKey) => {
+                      bulkIntervals.forEach((interval) => {
+                        bulkRows.forEach((rowLabel) => {
+                          const base = {
+                            id: `${now}_${signalKey}_${interval}_${rowLabel}_${Math.random()
+                              .toString(36)
+                              .slice(2, 8)}`,
+                            groupId,
+                            signalKey,
+                            interval,
+                            rowLabel,
+                            type: bulkType,
+                          };
+                          if (bulkType === "boolean") {
+                            newRules.push({ ...base, boolValue: bulkBoolValue });
+                          } else if (bulkType === "string") {
+                            newRules.push({
+                              ...base,
+                              operator: bulkStringOperator,
+                              stringValue: bulkStringValue,
+                            });
+                          } else if (
+                            bulkType === "buy_sell" ||
+                            bulkType === "inc_dec" ||
+                            bulkType === "bull_bear" ||
+                            bulkType === "red_green" ||
+                            bulkType === "trend_3"
+                          ) {
+                            newRules.push({ ...base, enumValue: bulkEnumValue });
+                          } else {
+                            newRules.push({
+                              ...base,
+                              operator: bulkNumberOperator,
+                              threshold: bulkNumberThreshold,
+                            });
+                          }
+                        });
+                      });
+                    });
+
+                    const groupName =
+                      bulkGroupName && bulkGroupName.trim().length
+                        ? bulkGroupName.trim()
+                        : `Group ${alertRuleGroups.length + (editingGroupId ? 0 : 1)}`;
+
+                    if (editingGroupId) {
+                      // Replace existing group's rules
+                      setAlertRules((prev) => [
+                        ...prev.filter((r) => r.groupId !== editingGroupId),
+                        ...newRules,
+                      ]);
+                      setAlertRuleGroups((prev) =>
+                        prev.map((g) =>
+                          g.id === editingGroupId
+                            ? {
+                                ...g,
+                                name: groupName,
+                                type: bulkType,
+                                signalKeys: [...bulkSignalKeys],
+                                intervals: [...bulkIntervals],
+                                rows: [...bulkRows],
+                                boolValue: bulkBoolValue,
+                                stringOperator: bulkStringOperator,
+                                stringValue: bulkStringValue,
+                                enumValue: bulkEnumValue,
+                                numberOperator: bulkNumberOperator,
+                                numberThreshold: bulkNumberThreshold,
+                              }
+                            : g
+                        )
+                      );
+                    } else {
+                      setAlertRules((prev) => [...prev, ...newRules]);
+                      setAlertRuleGroups((prev) => [
+                        ...prev,
+                        {
+                          id: groupId,
+                          name: groupName,
+                          type: bulkType,
+                          signalKeys: [...bulkSignalKeys],
+                          intervals: [...bulkIntervals],
+                          rows: [...bulkRows],
+                          boolValue: bulkBoolValue,
+                          stringOperator: bulkStringOperator,
+                          stringValue: bulkStringValue,
+                          enumValue: bulkEnumValue,
+                          numberOperator: bulkNumberOperator,
+                          numberThreshold: bulkNumberThreshold,
+                        },
+                      ]);
+                    }
+                    setEditingGroupId(null);
+                  }}
+                >
+                  {editingGroupId ? "Update group" : "Create rules"}
+                </button>
+              </div>
+            </div>
+
+            {/* Group list */}
+            {alertRuleGroups && alertRuleGroups.length > 0 && (
+              <div className="mb-3 text-[11px] space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-gray-200">
+                    Groups ({alertRuleGroups.length})
+                  </span>
+                </div>
+                <div className="space-y-1">
+                  {alertRuleGroups.map((g) => {
+                    const total =
+                      (g.signalKeys?.length || 0) *
+                      (g.intervals?.length || 0) *
+                      (g.rows?.length || 0);
+                    return (
+                      <div
+                        key={g.id}
+                        className="flex items-center justify-between bg-[#181818] border border-gray-700 rounded-lg px-2 py-1.5"
+                      >
+                        <div className="flex flex-col">
+                          <span className="font-semibold text-violet-200">
+                            {g.name}
+                          </span>
+                          <span className="text-gray-400">
+                            {g.signalKeys?.length || 0} signals ×{" "}
+                            {g.intervals?.length || 0} intervals ×{" "}
+                            {g.rows?.length || 0} rows ={" "}
+                            <span className="text-gray-200 font-semibold">
+                              {total}
+                            </span>{" "}
+                            rules
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            className="px-2 py-0.5 rounded bg-emerald-700 hover:bg-emerald-600 text-white"
+                            onClick={() => {
+                              setEditingGroupId(g.id);
+                              setBulkGroupName(g.name || "");
+                              setBulkType(g.type || "number");
+                              setBulkSignalKeys(g.signalKeys || []);
+                              setBulkIntervals(g.intervals || []);
+                              setBulkRows(g.rows || []);
+                              setBulkBoolValue(
+                                g.boolValue === undefined ? true : !!g.boolValue
+                              );
+                              setBulkStringOperator(g.stringOperator || "eq");
+                              setBulkStringValue(g.stringValue || "");
+                              setBulkEnumValue(g.enumValue || "BUY");
+                              setBulkNumberOperator(g.numberOperator || ">=");
+                              setBulkNumberThreshold(
+                                g.numberThreshold === undefined ? 0 : g.numberThreshold
+                              );
+                            }}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            className="px-2 py-0.5 rounded bg-red-700 hover:bg-red-600 text-white"
+                            onClick={() => {
+                              if (
+                                window.confirm(
+                                  `Delete group "${g.name}" and all its rules?`
+                                )
+                              ) {
+                                setAlertRuleGroups((prev) =>
+                                  prev.filter((x) => x.id !== g.id)
+                                );
+                                setAlertRules((prev) =>
+                                  prev.filter((r) => r.groupId !== g.id)
+                                );
+                                if (editingGroupId === g.id) {
+                                  setEditingGroupId(null);
+                                }
+                              }
+                            }}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Individual rules editor */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="font-semibold text-gray-200">
+                  Rules ({alertRules.length})
+                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-400">Sort by:</span>
+                  <button
+                    type="button"
+                    className={`px-1.5 py-0.5 rounded ${
+                      ruleSortKey === "signalKey" ? "bg-violet-700 text-white" : "bg-[#222] text-gray-300"
+                    }`}
+                    onClick={() => setRuleSortKey("signalKey")}
+                  >
+                    Signal
+                  </button>
+                  <button
+                    type="button"
+                    className={`px-1.5 py-0.5 rounded ${
+                      ruleSortKey === "interval" ? "bg-violet-700 text-white" : "bg-[#222] text-gray-300"
+                    }`}
+                    onClick={() => setRuleSortKey("interval")}
+                  >
+                    Interval
+                  </button>
+                  <button
+                    type="button"
+                    className={`px-1.5 py-0.5 rounded ${
+                      ruleSortKey === "rowLabel" ? "bg-violet-700 text-white" : "bg-[#222] text-gray-300"
+                    }`}
+                    onClick={() => setRuleSortKey("rowLabel")}
+                  >
+                    Candle row
+                  </button>
+                  <button
+                    type="button"
+                    className="ml-3 px-2 py-0.5 rounded bg-red-700 hover:bg-red-600 text-white"
+                    onClick={() => {
+                      if (alertRules.length && window.confirm("Remove all alert rules?")) {
+                        setAlertRules([]);
+                      }
+                    }}
+                  >
+                    Remove all
+                  </button>
+                </div>
+              </div>
+              {(!alertRules || alertRules.length === 0) && (
+                <div className="text-xs text-gray-400 mb-2">
+                  No alert rules yet. Use bulk create or Add rule to create some.
+                </div>
+              )}
+              {sortedAlertRules.map((rule, idx) => (
+                <div
+                  key={rule.id || idx}
+                  className="grid grid-cols-1 sm:grid-cols-7 gap-2 items-center bg-[#181818] border border-gray-700 rounded-xl p-2 sm:p-3"
+                >
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[10px] uppercase tracking-wide text-gray-400">Signal</span>
+                    <select
+                      className="bg-[#111] border border-gray-700 rounded px-2 py-1 text-xs sm:text-sm"
+                      value={rule.signalKey || SIGNAL_ROWS[0]?.key || ""}
+                      onChange={(e) =>
+                        setAlertRules((prev) =>
+                          prev.map((r, i) =>
+                            i === idx ? { ...r, signalKey: e.target.value } : r
+                          )
+                        )
+                      }
+                    >
+                      {SIGNAL_ROWS.map((r) => (
+                        <option key={r.key} value={r.key}>
+                          {r.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[10px] uppercase tracking-wide text-gray-400">Interval</span>
+                    <select
+                      className="bg-[#111] border border-gray-700 rounded px-2 py-1 text-xs sm:text-sm"
+                      value={rule.interval || INTERVALS[0]}
+                      onChange={(e) =>
+                        setAlertRules((prev) =>
+                          prev.map((r, i) =>
+                            i === idx ? { ...r, interval: e.target.value } : r
+                          )
+                        )
+                      }
+                    >
+                      {INTERVALS.map((iv) => (
+                        <option key={iv} value={iv}>
+                          {iv}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[10px] uppercase tracking-wide text-gray-400">Candle row</span>
+                    <select
+                      className="bg-[#111] border border-gray-700 rounded px-2 py-1 text-xs sm:text-sm"
+                      value={rule.rowLabel || ROW_LABELS[0]}
+                      onChange={(e) =>
+                        setAlertRules((prev) =>
+                          prev.map((r, i) =>
+                            i === idx ? { ...r, rowLabel: e.target.value } : r
+                          )
+                        )
+                      }
+                    >
+                      {ROW_LABELS.map((lbl) => (
+                        <option key={lbl} value={lbl}>
+                          {lbl}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[10px] uppercase tracking-wide text-gray-400">Type</span>
+                    <select
+                      className="bg-[#111] border border-gray-700 rounded px-2 py-1 text-xs sm:text-sm"
+                      value={rule.type || "number"}
+                      onChange={(e) =>
+                        setAlertRules((prev) =>
+                          prev.map((r, i) =>
+                            i === idx ? { ...r, type: e.target.value } : r
+                          )
+                        )
+                      }
+                    >
+                      <option value="number">Number</option>
+                      <option value="boolean">True / False</option>
+                      <option value="string">Text (any)</option>
+                      <option value="buy_sell">Buy / Sell / None</option>
+                      <option value="inc_dec">Increasing / Decreasing / None</option>
+                      <option value="bull_bear">Bull / Bear / None</option>
+                      <option value="red_green">Red / Green / None</option>
+                      <option value="trend_3">Bull_trending / Flat / Bear_trending</option>
+                    </select>
+                  </div>
+                  {rule.type === "boolean" ? (
+                    <>
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[10px] uppercase tracking-wide text-gray-400">
+                          Value
+                        </span>
+                        <select
+                          className="bg-[#111] border border-gray-700 rounded px-2 py-1 text-xs sm:text-sm"
+                          value={String(rule.boolValue ?? true)}
+                          onChange={(e) =>
+                            setAlertRules((prev) =>
+                              prev.map((r, i) =>
+                                i === idx ? { ...r, boolValue: e.target.value === "true" } : r
+                              )
+                            )
+                          }
+                        >
+                          <option value="true">true</option>
+                          <option value="false">false</option>
+                        </select>
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[10px] uppercase tracking-wide text-gray-400">
+                          &nbsp;
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setAlertRules((prev) => prev.filter((_, i) => i !== idx))
+                          }
+                          className="mt-1 px-2 py-1 rounded bg-red-700 hover:bg-red-600 text-xs"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </>
+                  ) : rule.type === "string" ? (
+                    <>
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[10px] uppercase tracking-wide text-gray-400">
+                          Condition
+                        </span>
+                        <select
+                          className="bg-[#111] border border-gray-700 rounded px-2 py-1 text-xs sm:text-sm"
+                          value={rule.operator || "eq"}
+                          onChange={(e) =>
+                            setAlertRules((prev) =>
+                              prev.map((r, i) =>
+                                i === idx ? { ...r, operator: e.target.value } : r
+                              )
+                            )
+                          }
+                        >
+                          <option value="eq">= equals</option>
+                          <option value="neq">≠ not equal</option>
+                          <option value="contains">contains</option>
+                          <option value="not_contains">not contains</option>
+                          <option value="starts_with">starts with</option>
+                          <option value="ends_with">ends with</option>
+                        </select>
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[10px] uppercase tracking-wide text-gray-400">
+                          Text
+                        </span>
+                        <input
+                          type="text"
+                          className="bg-[#111] border border-gray-700 rounded px-2 py-1 text-xs sm:text-sm"
+                          value={rule.stringValue ?? ""}
+                          onChange={(e) =>
+                            setAlertRules((prev) =>
+                              prev.map((r, i) =>
+                                i === idx ? { ...r, stringValue: e.target.value } : r
+                              )
+                            )
+                          }
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[10px] uppercase tracking-wide text-gray-400">
+                          &nbsp;
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setAlertRules((prev) => prev.filter((_, i) => i !== idx))
+                          }
+                          className="mt-1 px-2 py-1 rounded bg-red-700 hover:bg-red-600 text-xs"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </>
+                  ) : rule.type === "buy_sell" ? (
+                    <>
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[10px] uppercase tracking-wide text-gray-400">
+                          Value
+                        </span>
+                        <select
+                          className="bg-[#111] border border-gray-700 rounded px-2 py-1 text-xs sm:text-sm"
+                          value={rule.enumValue ?? "BUY"}
+                          onChange={(e) =>
+                            setAlertRules((prev) =>
+                              prev.map((r, i) =>
+                                i === idx ? { ...r, enumValue: e.target.value } : r
+                              )
+                            )
+                          }
+                        >
+                          <option value="BUY">BUY</option>
+                          <option value="SELL">SELL</option>
+                          <option value="NONE">NONE</option>
+                        </select>
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[10px] uppercase tracking-wide text-gray-400">
+                          &nbsp;
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setAlertRules((prev) => prev.filter((_, i) => i !== idx))
+                          }
+                          className="mt-1 px-2 py-1 rounded bg-red-700 hover:bg-red-600 text-xs"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </>
+                  ) : rule.type === "inc_dec" ? (
+                    <>
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[10px] uppercase tracking-wide text-gray-400">
+                          Value
+                        </span>
+                        <select
+                          className="bg-[#111] border border-gray-700 rounded px-2 py-1 text-xs sm:text-sm"
+                          value={rule.enumValue ?? "INCREASING"}
+                          onChange={(e) =>
+                            setAlertRules((prev) =>
+                              prev.map((r, i) =>
+                                i === idx ? { ...r, enumValue: e.target.value } : r
+                              )
+                            )
+                          }
+                        >
+                          <option value="INCREASING">INCREASING</option>
+                          <option value="DECREASING">DECREASING</option>
+                          <option value="NONE">NONE</option>
+                        </select>
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[10px] uppercase tracking-wide text-gray-400">
+                          &nbsp;
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setAlertRules((prev) => prev.filter((_, i) => i !== idx))
+                          }
+                          className="mt-1 px-2 py-1 rounded bg-red-700 hover:bg-red-600 text-xs"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </>
+                  ) : rule.type === "bull_bear" ? (
+                    <>
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[10px] uppercase tracking-wide text-gray-400">
+                          Value
+                        </span>
+                        <select
+                          className="bg-[#111] border border-gray-700 rounded px-2 py-1 text-xs sm:text-sm"
+                          value={rule.enumValue ?? "BULL"}
+                          onChange={(e) =>
+                            setAlertRules((prev) =>
+                              prev.map((r, i) =>
+                                i === idx ? { ...r, enumValue: e.target.value } : r
+                              )
+                            )
+                          }
+                        >
+                          <option value="BULL">BULL</option>
+                          <option value="BEAR">BEAR</option>
+                          <option value="NONE">NONE</option>
+                        </select>
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[10px] uppercase tracking-wide text-gray-400">
+                          &nbsp;
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setAlertRules((prev) => prev.filter((_, i) => i !== idx))
+                          }
+                          className="mt-1 px-2 py-1 rounded bg-red-700 hover:bg-red-600 text-xs"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </>
+                  ) : rule.type === "red_green" ? (
+                    <>
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[10px] uppercase tracking-wide text-gray-400">
+                          Value
+                        </span>
+                        <select
+                          className="bg-[#111] border border-gray-700 rounded px-2 py-1 text-xs sm:text-sm"
+                          value={rule.enumValue ?? "GREEN"}
+                          onChange={(e) =>
+                            setAlertRules((prev) =>
+                              prev.map((r, i) =>
+                                i === idx ? { ...r, enumValue: e.target.value } : r
+                              )
+                            )
+                          }
+                        >
+                          <option value="GREEN">GREEN</option>
+                          <option value="RED">RED</option>
+                          <option value="NONE">NONE</option>
+                        </select>
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[10px] uppercase tracking-wide text-gray-400">
+                          &nbsp;
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setAlertRules((prev) => prev.filter((_, i) => i !== idx))
+                          }
+                          className="mt-1 px-2 py-1 rounded bg-red-700 hover:bg-red-600 text-xs"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </>
+                  ) : rule.type === "trend_3" ? (
+                    <>
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[10px] uppercase tracking-wide text-gray-400">
+                          Value
+                        </span>
+                        <select
+                          className="bg-[#111] border border-gray-700 rounded px-2 py-1 text-xs sm:text-sm"
+                          value={rule.enumValue ?? "bull_trending"}
+                          onChange={(e) =>
+                            setAlertRules((prev) =>
+                              prev.map((r, i) =>
+                                i === idx ? { ...r, enumValue: e.target.value } : r
+                              )
+                            )
+                          }
+                        >
+                          <option value="bull_trending">bull_trending</option>
+                          <option value="flat">flat</option>
+                          <option value="bear_trending">bear_trending</option>
+                        </select>
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[10px] uppercase tracking-wide text-gray-400">
+                          &nbsp;
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setAlertRules((prev) => prev.filter((_, i) => i !== idx))
+                          }
+                          className="mt-1 px-2 py-1 rounded bg-red-700 hover:bg-red-600 text-xs"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[10px] uppercase tracking-wide text-gray-400">
+                          Condition
+                        </span>
+                        <select
+                          className="bg-[#111] border border-gray-700 rounded px-2 py-1 text-xs sm:text-sm"
+                          value={rule.operator || ">="}
+                          onChange={(e) =>
+                            setAlertRules((prev) =>
+                              prev.map((r, i) =>
+                                i === idx ? { ...r, operator: e.target.value } : r
+                              )
+                            )
+                          }
+                        >
+                          <option value=">">&gt;</option>
+                          <option value=">=">&gt;=</option>
+                          <option value="<">&lt;</option>
+                          <option value="<=">&lt;=</option>
+                          <option value="==">=</option>
+                          <option value="!=">≠</option>
+                        </select>
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[10px] uppercase tracking-wide text-gray-400">
+                          Number
+                        </span>
+                        <input
+                          type="number"
+                          className="bg-[#111] border border-gray-700 rounded px-2 py-1 text-xs sm:text-sm"
+                          value={rule.threshold ?? ""}
+                          onChange={(e) =>
+                            setAlertRules((prev) =>
+                              prev.map((r, i) =>
+                                i === idx ? { ...r, threshold: e.target.value } : r
+                              )
+                            )
+                          }
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[10px] uppercase tracking-wide text-gray-400">
+                          &nbsp;
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setAlertRules((prev) => prev.filter((_, i) => i !== idx))
+                          }
+                          className="mt-1 px-2 py-1 rounded bg-red-700 hover:bg-red-600 text-xs"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const first = SIGNAL_ROWS[0];
+                    setAlertRules((prev) => [
+                      ...prev,
+                      {
+                        id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+                        signalKey: first?.key || "",
+                        interval: INTERVALS[0],
+                        rowLabel: ROW_LABELS[0],
+                        type: "number",
+                        operator: ">=",
+                        threshold: 0,
+                      },
+                    ]);
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-sm font-medium"
+                >
+                  Add rule
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExportAlertRules}
+                  className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-sm font-medium"
+                >
+                  Export script
+                </button>
+                <button
+                  type="button"
+                  onClick={handleImportAlertRulesClick}
+                  className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-sm font-medium"
+                >
+                  Import script
+                </button>
+                <input
+                  ref={importInputRef}
+                  type="file"
+                  accept=".json,.txt,application/json,text/plain"
+                  className="hidden"
+                  onChange={handleImportAlertRulesFile}
+                />
+              </div>
+              <div className="text-[11px] text-gray-400">
+                Rules are stored in your browser (localStorage). Export script to share, Import script to load.
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="space-y-6 relative">
         {!chartReady && (
           <div className="absolute inset-0 flex items-center justify-center bg-[#111]/80 z-10 rounded-lg">
@@ -963,7 +2151,11 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
   const navigate = useNavigate();
   const [formattedRow, setFormattedRow] = useState(initialFormattedRow || {});
   const [rawTrade, setRawTrade] = useState(initialRawTrade ?? null);
-  const row = formattedRow || {};
+  // When rawTrade exists, use formatTradeData to show ALL fields from the trade (same as TableView)
+  const row = useMemo(
+    () => (rawTrade ? formatTradeData(rawTrade, 0) : formattedRow || {}),
+    [rawTrade, formattedRow]
+  );
   const allKeys = Object.keys(row).filter((k) => k !== "📋" && row[k] != null && String(row[k]).trim() !== "");
 
   const uniqueId = rawTrade?.unique_id != null ? String(rawTrade.unique_id) : (row.Unique_ID != null ? String(stripHtml(row.Unique_ID)).trim() : null);
@@ -985,8 +2177,9 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
       try {
         const res = await fetch(`${API_BASE_URL}/api/trades`);
         if (cancelled || !res.ok) return;
-        const data = await res.json();
-        if (cancelled || !Array.isArray(data)) return;
+        const json = await res.json();
+        const data = Array.isArray(json?.trades) ? json.trades : (Array.isArray(json) ? json : []);
+        if (cancelled || !data.length) return;
         const trade = data.find(
           (t) =>
             (t.unique_id != null && String(t.unique_id) === uniqueId) ||
@@ -1036,6 +2229,34 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
     return () => clearInterval(id);
   }, [signalSymbol]);
 
+  const isExistInExchange = rawTrade && (
+    rawTrade.exist_in_exchange === true ||
+    rawTrade.exist_in_exchange === "true" ||
+    rawTrade.exist_in_exchange === 1 ||
+    (typeof rawTrade.exist_in_exchange === "string" && parseFloat(rawTrade.exist_in_exchange) > 0)
+  );
+  const [exchangePositionData, setExchangePositionData] = useState(null);
+  const EXCHANGE_POLL_MS = 60 * 1000; // 1 min
+  useEffect(() => {
+    if (!isExistInExchange || !signalSymbol) {
+      setExchangePositionData(null);
+      return;
+    }
+    const fetchOpenPosition = async () => {
+      try {
+        const res = await fetch(apiSignals(`/api/open-position?symbol=${encodeURIComponent(signalSymbol)}`));
+        const data = await res.json().catch(() => ({}));
+        if (data?.ok) setExchangePositionData(data);
+        else setExchangePositionData({ ok: false, error: data?.message || "Failed to fetch" });
+      } catch (e) {
+        setExchangePositionData({ ok: false, error: e?.message || "Network error" });
+      }
+    };
+    fetchOpenPosition();
+    const id = setInterval(fetchOpenPosition, EXCHANGE_POLL_MS);
+    return () => clearInterval(id);
+  }, [isExistInExchange, signalSymbol]);
+
   const [fieldOrder, setFieldOrder] = useState(() => {
     try {
       const v = localStorage.getItem(INFO_FIELD_ORDER_KEY);
@@ -1061,8 +2282,18 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
     : allKeys;
   const keysToShow = orderedKeys.filter((k) => !visibleKeys || visibleKeys.has(k));
 
+  // Auto-include new keys in visibleKeys so newly added trade fields show up (e.g. from SELECT * FROM alltraderecords)
+  useEffect(() => {
+    if (!visibleKeys || !allKeys.length) return;
+    const missing = allKeys.filter((k) => !visibleKeys.has(k));
+    if (missing.length > 0) {
+      setVisibleKeys((prev) => new Set([...prev, ...missing]));
+    }
+  }, [allKeys.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const [showInfoSettings, setShowInfoSettings] = useState(false);
   const [showLayoutSettings, setShowLayoutSettings] = useState(false);
+  const [showAlertSettings, setShowAlertSettings] = useState(false);
   const [sectionOrder, setSectionOrder] = useState(() => {
     try {
       const v = localStorage.getItem(SECTION_ORDER_KEY);
@@ -1124,6 +2355,27 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
   const [zoomBackLeft, zoomOutBackLeft, zoomInBackLeft] = useZoomLevel(ZOOM_KEYS.backLeft);
   const [zoomBackRight, zoomOutBackRight, zoomInBackRight] = useZoomLevel(ZOOM_KEYS.backRight);
   const [zoomChart, zoomOutChart, zoomInChart] = useZoomLevel(ZOOM_KEYS.chart);
+  const [alertRules, setAlertRules] = useState(() => {
+    try {
+      const raw = localStorage.getItem(SIGNAL_ALERT_RULES_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {}
+    return [];
+  });
+  const [alertRuleGroups, setAlertRuleGroups] = useState(() => {
+    try {
+      const raw = localStorage.getItem(ALERT_RULE_GROUPS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {}
+    return [];
+  });
+  const importInputRef = useRef(null);
 
   useEffect(() => {
     if (fieldOrder && fieldOrder.length) {
@@ -1144,6 +2396,84 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
       localStorage.setItem(SECTION_ORDER_KEY, JSON.stringify(sectionOrder));
     } catch {}
   }, [sectionOrder]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIGNAL_ALERT_RULES_KEY, JSON.stringify(alertRules));
+    } catch {}
+  }, [alertRules]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(ALERT_RULE_GROUPS_KEY, JSON.stringify(alertRuleGroups));
+    } catch {}
+  }, [alertRuleGroups]);
+
+  const handleExportAlertRules = useCallback(() => {
+    if (typeof window === "undefined" || !window.document) return;
+    try {
+      const payload = {
+        type: "lab_single_trade_alert_rules",
+        version: 1,
+        createdAt: new Date().toISOString(),
+        rules: alertRules || [],
+      };
+      const json = JSON.stringify(payload, null, 2);
+      const blob = new Blob([json], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const ts = new Date().toISOString().replace(/[:.]/g, "-");
+      a.download = `lab-alert-rules-${ts}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error("[AlertRules] Export failed:", e);
+      if (typeof window !== "undefined") {
+        window.alert("Failed to export rules. See console for details.");
+      }
+    }
+  }, [alertRules]);
+
+  const handleImportAlertRulesClick = useCallback(() => {
+    if (importInputRef.current) {
+      importInputRef.current.value = "";
+      importInputRef.current.click();
+    }
+  }, []);
+
+  const handleImportAlertRulesFile = useCallback((event) => {
+    try {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const text = String(e.target?.result || "");
+          const parsed = JSON.parse(text);
+          const rules = Array.isArray(parsed)
+            ? parsed
+            : Array.isArray(parsed?.rules)
+              ? parsed.rules
+              : null;
+          if (!rules) {
+            window.alert("Invalid script file: expected an array of rules.");
+            return;
+          }
+          setAlertRules(rules);
+        } catch (err) {
+          console.error("[AlertRules] Import parse error:", err);
+          window.alert("Failed to parse script file. See console for details.");
+        }
+      };
+      reader.readAsText(file);
+    } catch (err) {
+      console.error("[AlertRules] Import failed:", err);
+      if (typeof window !== "undefined") {
+        window.alert("Failed to import rules. See console for details.");
+      }
+    }
+  }, []);
 
   const chartSize = { width: 500, height: chartHeight };
 
@@ -1303,15 +2633,24 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
                 <span className="text-xs font-semibold text-gray-600 dark:text-gray-400 truncate">
                   {signalsData?.symbol || signalSymbol || "—"} signals
                 </span>
-                {signalsData?.ok && signalsData?.intervals && (
+                <div className="ml-auto flex items-center gap-2">
+                  {signalsData?.ok && signalsData?.intervals && (
+                    <button
+                      type="button"
+                      onClick={() => setSignalsTableViewMode((m) => (m === "intervalWise" ? "rowWise" : "intervalWise"))}
+                      className="px-2 py-1 rounded text-xs font-medium bg-teal-600 hover:bg-teal-700 text-white whitespace-nowrap"
+                    >
+                      Change view
+                    </button>
+                  )}
                   <button
                     type="button"
-                    onClick={() => setSignalsTableViewMode((m) => (m === "intervalWise" ? "rowWise" : "intervalWise"))}
-                    className="ml-auto px-2 py-1 rounded text-xs font-medium bg-teal-600 hover:bg-teal-700 text-white whitespace-nowrap"
+                    onClick={() => setShowAlertSettings(true)}
+                    className="px-2 py-1 rounded text-xs font-medium bg-violet-600 hover:bg-violet-700 text-white whitespace-nowrap"
                   >
-                    Change view
+                    Alert settings
                   </button>
-                )}
+                </div>
               </div>
               <div className="flex-1 min-h-0 overflow-auto">
                 {signalsData?.ok && signalsData?.intervals ? (
@@ -1319,13 +2658,126 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
                     const isIntervalWise = signalsTableViewMode === "intervalWise";
                     const columns = isIntervalWise
                       ? INTERVALS.flatMap((iv, gIdx) =>
-                          ROW_LABELS.map((label) => ({ iv, label, rowIdx: ROW_LABEL_TO_DATA_INDEX[label] ?? 0, groupKey: iv, groupIndex: gIdx }))
+                          ROW_LABELS.map((label) => ({
+                            iv,
+                            label,
+                            rowIdx: ROW_LABEL_TO_DATA_INDEX[label] ?? 0,
+                            groupKey: iv,
+                            groupIndex: gIdx,
+                          }))
                         )
                       : ROW_LABELS.flatMap((label, gIdx) =>
-                          INTERVALS.map((iv) => ({ iv, label, rowIdx: ROW_LABEL_TO_DATA_INDEX[label] ?? 0, groupKey: label, groupIndex: gIdx }))
+                          INTERVALS.map((iv) => ({
+                            iv,
+                            label,
+                            rowIdx: ROW_LABEL_TO_DATA_INDEX[label] ?? 0,
+                            groupKey: label,
+                            groupIndex: gIdx,
+                          }))
                         );
                     const groupColors = isIntervalWise ? INTERVAL_GROUP_COLORS : ROW_GROUP_COLORS;
                     const getGroupColor = (groupIndex) => groupColors[groupIndex] ?? "";
+
+                    const matchesRuleValue = (rule, v) => {
+                      if (!rule) return false;
+
+                      // Boolean flags (true/false)
+                      if (rule.type === "boolean") {
+                        const boolVal = v === true || v === "true" || v === 1 || v === "1";
+                        const target =
+                          rule.boolValue === undefined ? true : !!rule.boolValue;
+                        return boolVal === target;
+                      }
+
+                      // Text / enums (buy/sell/none, bull/bear, etc.)
+                      if (
+                        rule.type === "string" ||
+                        rule.type === "buy_sell" ||
+                        rule.type === "inc_dec" ||
+                        rule.type === "bull_bear" ||
+                        rule.type === "red_green" ||
+                        rule.type === "trend_3"
+                      ) {
+                        const valueStr = (v == null ? "" : String(v)).toLowerCase().trim();
+                        const rawTarget =
+                          rule.type === "string"
+                            ? rule.stringValue
+                            : rule.enumValue;
+                        const targetStr = (rawTarget ?? "").toString().toLowerCase().trim();
+                        const op = rule.operator || "eq";
+
+                        switch (op) {
+                          case "neq":
+                            return valueStr !== targetStr;
+                          case "contains":
+                            return valueStr.includes(targetStr);
+                          case "not_contains":
+                            return !valueStr.includes(targetStr);
+                          case "starts_with":
+                            return valueStr.startsWith(targetStr);
+                          case "ends_with":
+                            return valueStr.endsWith(targetStr);
+                          case "eq":
+                          default:
+                            return valueStr === targetStr;
+                        }
+                      }
+
+                      // Numeric comparisons
+                      const num = typeof v === "number" ? v : parseFloat(v);
+                      if (!Number.isFinite(num)) return false;
+                      const threshold = Number(rule.threshold);
+                      switch (rule.operator) {
+                        case ">":
+                          return num > threshold;
+                        case ">=":
+                          return num >= threshold;
+                        case "<":
+                          return num < threshold;
+                        case "<=":
+                          return num <= threshold;
+                        case "==":
+                          return num === threshold;
+                        case "!=":
+                          return num !== threshold;
+                        default:
+                          return false;
+                      }
+                    };
+
+                    // Count how many cells per row are currently matching alert rules,
+                    // so rows with the highest alert activity can float to the top.
+                    const rowAlertCounts = {};
+                    SIGNAL_ROWS.forEach(({ key }) => {
+                      rowAlertCounts[key] = 0;
+                    });
+                    if (alertRules && alertRules.length && signalsData?.intervals) {
+                      SIGNAL_ROWS.forEach(({ key }) => {
+                        columns.forEach((col) => {
+                          const summary = signalsData.intervals[col.iv]?.summary;
+                          const rows = Array.isArray(summary) ? summary : [];
+                          const v = rows[col.rowIdx]?.[key];
+                          const matching = alertRules.filter(
+                            (rule) =>
+                              rule &&
+                              rule.signalKey === key &&
+                              rule.interval === col.iv &&
+                              rule.rowLabel === col.label
+                          );
+                          if (!matching.length) return;
+                          const cellMatches = matching.some((rule) =>
+                            matchesRuleValue(rule, v)
+                          );
+                          if (cellMatches) {
+                            rowAlertCounts[key] = (rowAlertCounts[key] || 0) + 1;
+                          }
+                        });
+                      });
+                    }
+                    const sortedSignalRows = [...SIGNAL_ROWS].sort(
+                      (a, b) =>
+                        (rowAlertCounts[b.key] || 0) - (rowAlertCounts[a.key] || 0)
+                    );
                     return (
                       <table className="w-full border-collapse" style={{ fontSize: "1em" }}>
                         <thead className="sticky top-0 bg-gray-100 dark:bg-gray-800 z-10">
@@ -1342,7 +2794,7 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
                           </tr>
                         </thead>
                         <tbody>
-                          {SIGNAL_ROWS.map(({ label, key }) => {
+                          {sortedSignalRows.map(({ label, key }) => {
                             const allLabels = SIGNAL_ROWS.map((r) => r.label);
                             const displayLabel = formatSignalName(label, allLabels);
                             return (
@@ -1356,10 +2808,22 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
                                 const v = rows[col.rowIdx]?.[key];
                                 const str = v != null ? (typeof v === "number" ? (Number.isInteger(v) ? String(v) : v.toFixed?.(4) ?? String(v)) : String(v)) : "—";
                                 const cellBg = getGroupColor(col.groupIndex);
+                                const hasAlert = (() => {
+                                  if (!alertRules || !alertRules.length) return false;
+                                  const matching = alertRules.filter((rule) =>
+                                    rule &&
+                                    rule.signalKey === key &&
+                                    rule.interval === col.iv &&
+                                    rule.rowLabel === col.label
+                                  );
+                                  if (!matching.length) return false;
+                                  return matching.some((rule) => matchesRuleValue(rule, v));
+                                })();
+                                const alertClasses = hasAlert ? "lab-alert-cell" : "";
                                 return (
                                   <td
                                     key={`${col.iv}-${col.label}-${idx}`}
-                                    className={`border border-gray-200 dark:border-gray-600 px-0.5 py-0.5 text-center text-gray-800 dark:text-gray-200 truncate max-w-[60px] ${cellBg}`}
+                                    className={`border border-gray-200 dark:border-gray-600 px-0.5 py-0.5 text-center text-gray-800 dark:text-gray-200 truncate max-w-[60px] ${cellBg} ${alertClasses}`}
                                     title={str}
                                   >
                                     {str}
@@ -1422,14 +2886,65 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
               className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl flex flex-col items-center justify-center text-gray-500 bg-gray-50 dark:bg-[#0d0d0d] overflow-hidden flex-shrink-0"
               style={{ width: `${backSplitPercent}%`, minHeight: backLeftHeight, fontSize: `${(zoomBackLeft / 100) * 14}px` }}
             >
-              <div className="flex items-center gap-2 mb-2 flex-wrap justify-center">
-                <span>(Empty — for future use)</span>
+              <div className="flex flex-col gap-2 mb-2 flex-wrap justify-center p-2 overflow-auto">
+                {!isExistInExchange ? (
+                  <span className="text-gray-500 dark:text-gray-400 text-center">Trade not in exchange — no live data</span>
+                ) : exchangePositionData?.ok === false ? (
+                  <span className="text-amber-600 dark:text-amber-400 text-center">{exchangePositionData?.error || "Failed to fetch"}</span>
+                ) : exchangePositionData?.positions?.length ? (
+                  <div className="overflow-auto w-full">
+                    <table className="w-full border-collapse border border-gray-300 dark:border-gray-600 text-xs">
+                      <thead>
+                        <tr className="bg-teal-100 dark:bg-teal-900/40">
+                          {exchangePositionData.positions[0] && Object.keys(exchangePositionData.positions[0]).map((k) => (
+                            <th key={k} className="border border-gray-300 dark:border-gray-600 px-2 py-1 text-left font-medium text-teal-800 dark:text-teal-200 whitespace-nowrap">
+                              {k.replace(/([A-Z])/g, " $1").trim()}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {exchangePositionData.positions.map((pos, idx) => {
+                          const formatVal = (key, val) => {
+                            if (val === null || val === undefined) return "\u2014";
+                            const num = parseFloat(val);
+                            if (!isNaN(num) && typeof val !== "boolean") {
+                              if (key.toLowerCase().includes("price") || key.toLowerCase().includes("notional") || key.toLowerCase().includes("margin") || key.toLowerCase().includes("profit")) return num.toFixed(4);
+                              if (Number.isInteger(num) || (key.toLowerCase().includes("amt") || key.toLowerCase().includes("qty"))) return num.toFixed(4);
+                              return num.toFixed(2);
+                            }
+                            if (typeof val === "boolean") return val ? "\u2713" : "\u2717";
+                            if (typeof val === "object") return JSON.stringify(val);
+                            return String(val);
+                          };
+                          return (
+                            <tr key={idx} className="border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1a1a1a] hover:bg-gray-50 dark:hover:bg-[#252525]">
+                              {Object.keys(pos).map((k) => {
+                                const pl = parseFloat(pos.unRealizedProfit || 0);
+                                const plClass = k === "unRealizedProfit" ? (pl < 0 ? "text-red-600 font-medium" : "text-green-600 font-medium") : "";
+                                return (
+                                  <td key={k} className={`border border-gray-200 dark:border-gray-700 px-2 py-1 ${plClass}`}>
+                                    {formatVal(k, pos[k])}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : isExistInExchange && exchangePositionData?.ok ? (
+                  <span className="text-gray-500 dark:text-gray-400 text-center">No open position for {signalSymbol}</span>
+                ) : (
+                  <span className="text-gray-500 dark:text-gray-400 text-center">Loading exchange data…</span>
+                )}
                 <ZoomControls
                   onDecrease={zoomOutBackLeft}
                   onIncrease={zoomInBackLeft}
                   current={zoomBackLeft}
                   label="Zoom left"
-                  className="min-w-[32px] min-h-[32px] flex items-center justify-center rounded-lg bg-gray-300 hover:bg-gray-400 dark:bg-gray-600 dark:hover:bg-gray-500 disabled:opacity-40 text-gray-800 dark:text-white text-xs font-bold"
+                  className="min-w-[32px] min-h-[32px] flex items-center justify-center rounded-lg bg-gray-300 hover:bg-gray-400 dark:bg-gray-600 dark:hover:bg-gray-500 disabled:opacity-40 text-gray-800 dark:text-white text-xs font-bold self-center"
                 />
               </div>
             </div>
@@ -1550,7 +3065,16 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
             </div>
           </div>
           <div className="p-3 sm:p-4 flex-1 min-h-0 overflow-auto overflow-x-auto" style={{ fontSize: `${(zoomChart / 100) * 14}px`, minHeight: chartHeight }}>
-            <LiveTradeChartSection tradePair={tradePair} chartSize={chartSize} />
+            <LiveTradeChartSection
+              tradePair={tradePair}
+              chartSize={chartSize}
+              alertRules={alertRules}
+              setAlertRules={setAlertRules}
+              alertRuleGroups={alertRuleGroups}
+              setAlertRuleGroups={setAlertRuleGroups}
+              showAlertSettings={showAlertSettings}
+              setShowAlertSettings={setShowAlertSettings}
+            />
           </div>
           <HeightDragger
             value={chartHeight}

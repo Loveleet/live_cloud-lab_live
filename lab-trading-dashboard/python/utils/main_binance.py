@@ -716,7 +716,7 @@ def getQuantity(symbol,invest):
 
 # getAllOpenPosition() is now called via API endpoint /api/sync-open-positions
 
-print(getAllOpenPosition())        
+# print(getOpenPosition('IDUSDT'))        
 
 
 

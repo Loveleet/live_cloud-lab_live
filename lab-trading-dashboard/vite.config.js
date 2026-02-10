@@ -12,16 +12,10 @@ export default defineConfig({
   server: {
     proxy: {
       // Only proxy /api/... (e.g. /api/tunnel-url), not /api-config.json (so config is served from public/ or returns 404)
-      // Proxies to local server (server-local.js) on port 3001, or cloud server on 10000 if local not available
+      // Proxies to main Node server on port 10000 (same as cloud config)
       '/api/': {
-        target: 'http://localhost:3001',
+        target: 'http://localhost:10000',
         changeOrigin: true,
-        // Fallback to cloud if local server not available (optional - you can remove this if you only want local)
-        // configure: (proxy, options) => {
-        //   proxy.on('error', (err, req, res) => {
-        //     console.log('[Vite Proxy] Local server not available, requests will fail');
-        //   });
-        // }
       },
     },
   },

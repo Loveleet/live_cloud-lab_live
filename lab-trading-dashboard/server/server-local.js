@@ -301,6 +301,23 @@ app.post("/api/autopilot", (req, res) => {
 // ✅ Proxy to Python CalculateSignals API (run python api_signals.py on port 5001)
 const PYTHON_SIGNALS_URL = process.env.PYTHON_SIGNALS_URL || "http://localhost:5001";
 
+// ✅ Proxy to Python getOpenPosition(symbol) for live exchange data
+app.get("/api/open-position", async (req, res) => {
+  try {
+    const symbol = (req.query.symbol || "").trim().toUpperCase();
+    if (!symbol) return res.status(400).json({ ok: false, message: "symbol query param required" });
+    const resp = await fetch(`${PYTHON_SIGNALS_URL}/api/open-position?symbol=${encodeURIComponent(symbol)}`, {
+      method: "GET",
+      signal: AbortSignal.timeout(15000),
+    });
+    const data = await resp.json().catch(() => ({}));
+    res.status(resp.status || 200).json(data);
+  } catch (err) {
+    console.error("[open-position] Proxy error:", err.message);
+    res.status(502).json({ ok: false, message: err.message || "Python signals service unavailable" });
+  }
+});
+
 // ✅ Proxy to Python sync-open-positions (getAllOpenPosition → exchange_trade sync)
 app.get("/api/sync-open-positions", async (req, res) => {
   try {

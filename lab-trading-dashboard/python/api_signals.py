@@ -55,11 +55,12 @@ import os
 # Add utils directory to path to import main_binance
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'utils'))
 try:
-    from utils.main_binance import getAllOpenPosition
+    from utils.main_binance import getAllOpenPosition, getOpenPosition
     from utils.Final_olab_database import olab_sync_exchange_trades
 except ImportError as e:
-    print(f"⚠️ Warning: Could not import getAllOpenPosition or olab_sync_exchange_trades: {e}")
+    print(f"⚠️ Warning: Could not import getAllOpenPosition, getOpenPosition or olab_sync_exchange_trades: {e}")
     getAllOpenPosition = None
+    getOpenPosition = None
     olab_sync_exchange_trades = None
 
 app = Flask(__name__)
@@ -214,6 +215,32 @@ def sync_open_positions():
             "ok": False,
             "message": error_msg
         }), 500
+
+
+@app.route("/api/open-position", methods=["GET", "OPTIONS"])
+def open_position():
+    """Return open position(s) for a symbol from Binance via getOpenPosition(symbol)."""
+    if request.method == "OPTIONS":
+        return "", 204
+
+    if getOpenPosition is None:
+        return jsonify({"ok": False, "message": "getOpenPosition not available"}), 500
+
+    symbol = (request.args.get("symbol") or (request.get_json(silent=True) or {}).get("symbol") or "").strip().upper()
+    if not symbol:
+        return jsonify({"ok": False, "message": "symbol query param required"}), 400
+
+    try:
+        positions = getOpenPosition(symbol)
+        if positions is None:
+            positions = []
+        return jsonify({"ok": True, "symbol": symbol, "positions": positions or []})
+    except Exception as e:
+        error_msg = str(e)
+        print(f"[open-position] Error: {error_msg}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"ok": False, "message": error_msg}), 500
 
 
 if __name__ == "__main__":
