@@ -13,7 +13,7 @@ else:
         @staticmethod
         def CoUninitialize():
             pass
-from utils.keys1 import api, secret
+from keys1 import api, secret
 from binance.um_futures import UMFutures
 import time
 
@@ -26,7 +26,6 @@ import talib
 import pandas as pd
 import ta
 from openpyxl import load_workbook
-from utils import *
 from colorama import init, Fore, Style
 import functools
 import time
@@ -308,6 +307,15 @@ try:
     def getOpenPosition(symbol):
         try:
             position = client.get_position_risk(symbol=symbol)
+            filtered_data = [entry for entry in position if float(entry['positionAmt']) != 0.0]
+            return filtered_data
+        except ClientError as e:
+            print("Error:", e)
+
+    def getAllOpenPosition():
+        try:
+            time.sleep(0.3)  # brief pause to avoid rate limit; was 2s (caused sync timeout with many positions)
+            position = client.get_position_risk()
             filtered_data = [entry for entry in position if float(entry['positionAmt']) != 0.0]
             return filtered_data
         except ClientError as e:
@@ -706,6 +714,9 @@ def getQuantity(symbol,invest):
         # Handle the error as needed, e.g., logging, raising, or any other appropriate action
 
 
+# getAllOpenPosition() is now called via API endpoint /api/sync-open-positions
+
+print(getAllOpenPosition())        
 
 
 

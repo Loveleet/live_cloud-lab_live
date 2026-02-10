@@ -23,7 +23,7 @@ import RefreshControls from './components/RefreshControls';
 import SuperTrendPanel from "./SuperTrendPanel";
 import TradeComparePage from "./components/TradeComparePage";
 import SoundSettings from "./components/SoundSettings";
-import { API_BASE_URL, getApiBaseUrl, api, loadRuntimeApiConfig } from "./config";
+import { API_BASE_URL, getApiBaseUrl, api, apiSignals, loadRuntimeApiConfig } from "./config";
 
 // Animated SVG background for LAB title
 function AnimatedGraphBackground({ width = 400, height = 80, opacity = 0.4 }) {
@@ -338,8 +338,11 @@ const [selectedIntervals, setSelectedIntervals] = useState(() => {
   
 
   const refreshAllData = useCallback(async () => {
+    const baseUrl = typeof window !== "undefined" ? getApiBaseUrl() : "";
+    console.log("[API DEBUG] refreshAllData() called. API base:", baseUrl || "(empty)");
     // On GitHub Pages with no API configured, skip requests to avoid 404 spam (getApiBaseUrl() updates after api-config.json loads)
     if (typeof window !== "undefined" && window.location?.hostname?.includes("github.io") && !getApiBaseUrl()) {
+      console.log("[API DEBUG] refreshAllData SKIP: github.io and no API base (waiting for api-config.json)");
       setTradeData([]);
       setMachines([]);
       setLogData([]);
@@ -352,11 +355,26 @@ const [selectedIntervals, setSelectedIntervals] = useState(() => {
     }
     try {
       setApiUnreachable(false);
+      
+      // Sync open positions from Binance to exchange_trade table
+      try {
+        console.log("[API DEBUG] sync open positions (via Node → Python)");
+        const syncRes = await fetch(api("/api/sync-open-positions"));
+        if (syncRes.ok) {
+          const syncJson = await syncRes.json();
+          console.log("[API DEBUG] Position sync result:", syncJson);
+        }
+      } catch (syncErr) {
+        console.warn("[API DEBUG] Position sync failed (non-critical):", syncErr?.message || syncErr);
+      }
+      
+      console.log("[API DEBUG] fetch /api/trades");
       const tradeRes = await fetch(api("/api/trades"));
       const tradeJson = tradeRes.ok ? await tradeRes.json() : { trades: [] };
       const trades = Array.isArray(tradeJson.trades) ? tradeJson.trades : [];
       setDemoDataHint(tradeJson._meta?.demoData ? tradeJson._meta.hint || null : null);
 
+      console.log("[API DEBUG] fetch /api/machines");
       const machinesRes = await fetch(api("/api/machines"));
       const machinesJson = machinesRes.ok ? await machinesRes.json() : { machines: [] };
       const machinesList = Array.isArray(machinesJson.machines) ? machinesJson.machines : [];
@@ -366,17 +384,20 @@ const [selectedIntervals, setSelectedIntervals] = useState(() => {
       const logs = Array.isArray(logJson.logs) ? logJson.logs : [];
 
       // Fetch SuperTrend data
+      console.log("[API DEBUG] fetch /api/supertrend");
       const superTrendRes = await fetch(api("/api/supertrend"));
       const superTrendJson = superTrendRes.ok ? await superTrendRes.json() : { supertrend: [] };
       setSuperTrendData(Array.isArray(superTrendJson.supertrend) ? superTrendJson.supertrend : []);
 
       // Fetch EMA trend data
+      console.log("[API DEBUG] fetch /api/pairstatus");
       const emaRes = await fetch(api("/api/pairstatus"));
       const emaJson = emaRes.ok ? await emaRes.json() : null;
       setEmaTrends(emaJson);
 
       // Fetch BUY/SELL live flags
       try {
+        console.log("[API DEBUG] fetch /api/active-loss");
         const flagsRes = await fetch(api("/api/active-loss"));
         const flagsJson = flagsRes.ok ? await flagsRes.json() : null;
         setActiveLossFlags(flagsJson || null);
@@ -419,6 +440,7 @@ const [selectedIntervals, setSelectedIntervals] = useState(() => {
       console.log("[DEBUG] Counts by machine from trades:", countsByMachine);
       console.log("[DEBUG] Selected machines:", allMachinesSelected);
     } catch (error) {
+      console.log("[API DEBUG] refreshAllData ERROR:", error?.message || error);
       setTradeData([]);
       setDemoDataHint(null);
       // On GitHub Pages, tunnel URL may have changed (ERR_NAME_NOT_RESOLVED = old URL). Refetch api-config and retry.

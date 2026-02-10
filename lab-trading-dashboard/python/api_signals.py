@@ -49,6 +49,18 @@ def kill_process_on_port(port):
 
 # Import after ensuring we're in the right context (run from python/ directory)
 from FinalVersionTrading_AWS import CalculateSignals_Direct_Api
+import sys
+import os
+
+# Add utils directory to path to import main_binance
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'utils'))
+try:
+    from utils.main_binance import getAllOpenPosition
+    from utils.Final_olab_database import olab_sync_exchange_trades
+except ImportError as e:
+    print(f"⚠️ Warning: Could not import getAllOpenPosition or olab_sync_exchange_trades: {e}")
+    getAllOpenPosition = None
+    olab_sync_exchange_trades = None
 
 app = Flask(__name__)
 
@@ -139,6 +151,69 @@ def calculate_signals():
 @app.route("/api/calculate-signals/health", methods=["GET"])
 def health():
     return jsonify({"ok": True, "service": "calculate-signals"})
+
+
+@app.route("/api/sync-open-positions", methods=["GET", "POST", "OPTIONS"])
+def sync_open_positions():
+    """Sync open positions from Binance to exchange_trade table."""
+    if request.method == "OPTIONS":
+        return "", 204
+    
+    if getAllOpenPosition is None or olab_sync_exchange_trades is None:
+        return jsonify({
+            "ok": False,
+            "message": "getAllOpenPosition or olab_sync_exchange_trades not available"
+        }), 500
+    
+    try:
+        print("[sync-open-positions] Fetching open positions from Binance (getAllOpenPosition)...")
+        positions = getAllOpenPosition()
+        positions_count = len(positions) if positions else 0
+        
+        print(f"[sync-open-positions] DEBUG: getAllOpenPosition returned {positions_count} positions")
+        
+        if not positions:
+            print("[sync-open-positions] DEBUG: No data from getAllOpenPosition, nothing to sync")
+            return jsonify({
+                "ok": True,
+                "message": "No open positions found",
+                "positions_count": 0,
+                "inserted_count": 0,
+                "updated_count": 0,
+                "already_existed_count": 0,
+            })
+        
+        print(f"[sync-open-positions] Syncing {positions_count} positions to exchange_trade...")
+        result = olab_sync_exchange_trades(positions)
+        
+        inserted = result["inserted_count"]
+        already_existed = result.get("already_existed_count", 0)
+        print(f"[sync-open-positions] DEBUG: data from getAllOpenPosition = {positions_count}")
+        print(f"[sync-open-positions] DEBUG: already existed in exchange_trade (skipped) = {already_existed}")
+        print(f"[sync-open-positions] DEBUG: insert success count = {inserted}")
+        if result.get("errors"):
+            print(f"[sync-open-positions] DEBUG: errors = {result['errors']}")
+        
+        return jsonify({
+            "ok": True,
+            "message": f"Synced {inserted} positions",
+            "positions_count": positions_count,
+            "inserted_count": inserted,
+            "updated_count": result["updated_count"],
+            "already_existed_count": already_existed,
+            "hedge_trades": result.get("hedge_trades", 0),
+            "errors": result.get("errors", [])
+        })
+        
+    except Exception as e:
+        error_msg = str(e)
+        print(f"[sync-open-positions] Error: {error_msg}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            "ok": False,
+            "message": error_msg
+        }), 500
 
 
 if __name__ == "__main__":

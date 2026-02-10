@@ -404,6 +404,42 @@ class SQLAccessHelper:
         print(f"🛑 SQL Execute FAILED after {retries} tries | Tag: {tag}")
         return False
 
+    def execute_in_transaction(self, steps, timeout=10, retries=2, delay=1, tag="transaction"):
+        """Run multiple (sql_query, params) steps in one transaction. Commit only if all succeed; rollback on any failure."""
+        for attempt in range(1, retries + 1):
+            conn = None
+            trans = None
+            try:
+                with self.connection_lock:
+                    self._ensure_engine()
+                    conn = self._get_connection_with_retry()
+                    trans = conn.begin()
+                    for sql_query, params in steps:
+                        optimized = olab_optimize_sql_query(sql_query)
+                        cleaned = olab_clean_timestamp_values(params or {})
+                        conn.execute(text(optimized), cleaned)
+                    trans.commit()
+                    return True
+            except Exception as e:
+                if trans is not None:
+                    try:
+                        trans.rollback()
+                    except Exception:
+                        pass
+                print(f"❌ Transaction error (attempt {attempt}/{retries}) | Tag: {tag} | Error: {e}")
+                olab_log_db_error(e, f"execute_in_transaction attempt {attempt}", tag)
+                if attempt < retries:
+                    time.sleep(delay)
+                    delay *= 1.5
+            finally:
+                if conn is not None:
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
+        print(f"🛑 Transaction FAILED after {retries} tries | Tag: {tag}")
+        return False
+
     def execute_many_safe(self, sql_query, param_list, autocommit=False, timeout=5, retries=2, delay=2, tag=""):
         for attempt in range(1, retries + 1):
             try:
@@ -3079,7 +3115,10 @@ def olab_clean_timestamp_values(data):
             'squeeze_status',
             'active_squeeze',
             'squeeze',
-            'is_active'
+            'is_active',
+            'exist_in_exchange',
+            'auto',
+            'update_table',
         }
         for key, value in data.items():
             if isinstance(value, str) and value.upper() == 'NONE':
@@ -3376,5 +3415,258 @@ def fetch_ohlcv(symbol, timeframe, limit):
 #     print('More than 5 SELL trades are running')
 # else:       
 #     print('Less than 5 SELL trades are running')
+
+# Lock for exchange sync so only one process/thread inserts at a time (multi-PC frontend safe)
+_sync_exchange_trades_lock = threading.Lock()
+
+# Default machine table for exchange-synced positions
+EXCHANGE_SYNC_MACHINE_ID = "M1"
+
+def _olab_build_m1_alltraderecords_document(unique_id, operator_trade_time, pair, investment, position_amt, entry_price, unrealized_profit, leverage_val, position_side, is_hedge):
+    """Build document for m1 and alltraderecords from exchange_trade row. Same columns as assign + exist_in_exchange, exchange_position, auto, update_table."""
+    action = "BUY" if position_side == "LONG" else "SELL"
+    ts = operator_trade_time.strftime("%Y-%m-%d %H:%M:%S") if hasattr(operator_trade_time, "strftime") else str(operator_trade_time)
+    buy_qty = position_amt if position_amt > 0 else 0
+    sell_qty = abs(position_amt) if position_amt < 0 else 0
+    buy_price = entry_price if position_side == "LONG" else 0
+    sell_price = entry_price if position_side == "SHORT" else 0
+    hedge_int = 1 if is_hedge else 0
+    document = {
+        "machineid": EXCHANGE_SYNC_MACHINE_ID,
+        "unique_id": unique_id,
+        "candel_time": ts,
+        "fetcher_trade_time": ts,
+        "operator_trade_time": operator_trade_time,
+        "operator_close_time": None,
+        "pair": pair,
+        "investment": investment,
+        "interval": "15m",
+        "stop_price": 0,
+        "save_price": 0,
+        "min_comm": 0,
+        "hedge": hedge_int,
+        "hedge_1_1_bool": hedge_int,
+        "action": action,
+        "buy_qty": buy_qty,
+        "buy_price": buy_price,
+        "buy_pl": 0,
+        "sell_qty": sell_qty,
+        "sell_price": sell_price,
+        "sell_pl": 0,
+        "commission": 0,
+        "pl_after_comm": unrealized_profit,
+        "close_price": 0,
+        "commision_journey": 0,
+        "profit_journey": 0,
+        "min_profit": 0,
+        "hedge_order_size": 0,
+        "hedge_1_1_bool": 0,
+        "added_qty": 0,
+        "min_comm_after_hedge": 0,
+        "type": "running",
+        "min_close": "NOT_ACTIVE",
+        "signalfrom": "exchange_sync",
+        "macd_action": "Active",
+        "swing1": 0,
+        "swing2": 0,
+        "swing3": 0,
+        "hedge_swing_high_point": 0,
+        "hedge_swing_low_point": 0,
+        "hedge_buy_pl": 0,
+        "hedge_sell_pl": 0,
+        "temp_high_point": 0,
+        "temp_low_point": 0,
+        "exist_in_exchange": True,
+        "exchange_position": "running",
+        "auto": False,
+        "update_table": False,
+    }
+    return document
+
+
+def olab_sync_exchange_trades(positions):
+    """
+    Sync open positions from Binance to exchange_trade, m1, and alltraderecords.
+    Uses a lock so only one sync runs at a time (multi-PC frontend safe).
+    If any of the three inserts fails, the transaction is rolled back and retried.
+    positions: List of position dicts from getAllOpenPosition()
+    Returns: dict with inserted_count, updated_count, already_existed_count, errors
+    """
+    if not positions or not isinstance(positions, list):
+        print("[olab_sync_exchange_trades] DEBUG: no positions or not a list, returning 0")
+        return {"inserted_count": 0, "updated_count": 0, "already_existed_count": 0, "errors": []}
+    
+    inserted_count = 0
+    already_existed_count = 0
+    errors = []
+    
+    print(f"[olab_sync_exchange_trades] DEBUG: received {len(positions)} positions from getAllOpenPosition")
+    
+    try:
+        # Group positions by symbol to detect hedge trades
+        positions_by_symbol = {}
+        for pos in positions:
+            symbol = pos.get('symbol', '').upper()
+            if symbol:
+                if symbol not in positions_by_symbol:
+                    positions_by_symbol[symbol] = []
+                positions_by_symbol[symbol].append(pos)
+        
+        # Check which positions already exist
+        symbols_list = list(positions_by_symbol.keys())
+        if not symbols_list:
+            print("[olab_sync_exchange_trades] DEBUG: no valid symbols, returning")
+            return {"inserted_count": 0, "updated_count": 0, "already_existed_count": 0, "errors": ["No valid symbols found"]}
+        
+        # Query existing running trades for these symbols
+        placeholders = ','.join([f"'{s}'" for s in symbols_list])
+        check_query = f"""
+            SELECT pair, unique_id FROM exchange_trade 
+            WHERE pair IN ({placeholders}) AND type = 'running'
+        """
+        existing_df = sql_helper.fetch_dataframe(check_query)
+        existing_pairs = set(existing_df['pair'].str.upper().tolist() if not existing_df.empty else [])
+        existing_unique_ids = set(existing_df['unique_id'].tolist() if not existing_df.empty else [])
+        print(f"[olab_sync_exchange_trades] DEBUG: exchange_trade already has {len(existing_unique_ids)} running rows for these symbols")
+        
+        # Process each position
+        for symbol, symbol_positions in positions_by_symbol.items():
+            is_hedge = len(symbol_positions) >= 2  # 2+ positions of same symbol = hedge
+            if is_hedge:
+                print(f"[olab_sync_exchange_trades] DEBUG: hedge trade detected for {symbol}")
+            
+            for pos in symbol_positions:
+                try:
+                    # Extract data
+                    position_side = pos.get('positionSide', '').upper()
+                    update_time_ms = pos.get('updateTime', 0)
+                    
+                    # Convert updateTime (milliseconds) to readable datetime
+                    if update_time_ms:
+                        update_dt = datetime.fromtimestamp(update_time_ms / 1000, tz=timezone.utc)
+                        update_time_str = update_dt.strftime('%Y-%m-%d %H:%M:%S%z')
+                        # Format timezone offset: +00:00 instead of +0000
+                        if len(update_time_str) > 19:
+                            tz_part = update_time_str[19:]
+                            if len(tz_part) == 5 and tz_part[0] in ['+', '-']:
+                                update_time_str = update_time_str[:19] + tz_part[:3] + ':' + tz_part[3:]
+                    else:
+                        update_dt = datetime.now(timezone.utc)
+                        update_time_str = update_dt.strftime('%Y-%m-%d %H:%M:%S+00:00')
+                    
+                    # Map positionSide to BUY/SELL
+                    side_str = 'BUY' if position_side == 'LONG' else 'SELL'
+                    
+                    # Create unique_id: symbol + side + updateTime + "I" (as per example: ARPAUSDTSELL2026-02-09 04:00:00+00:00I)
+                    unique_id = f"{symbol}{side_str}{update_time_str}I"
+                    
+                    # Skip if already exists
+                    if unique_id in existing_unique_ids:
+                        already_existed_count += 1
+                        print(f"[olab_sync_exchange_trades] DEBUG: data EXISTS, skipped (unique_id={unique_id[:40]}...)")
+                        continue
+                    
+                    # Skip if pair already exists as running (unless it's a different unique_id)
+                    if symbol.upper() in existing_pairs:
+                        # Check if this specific unique_id exists
+                        if unique_id not in existing_unique_ids:
+                            # Same pair but different unique_id - might be an update, but we insert as new
+                            pass
+                        else:
+                            already_existed_count += 1
+                            continue
+                    
+                    # Prepare insert values
+                    position_amt = float(pos.get('positionAmt', 0) or 0)
+                    entry_price = float(pos.get('entryPrice', 0) or 0)
+                    unrealized_profit = float(pos.get('unRealizedProfit', 0) or 0)
+                    leverage_val = float(pos.get('leverage', 0) or 0)
+                    notional = float(pos.get('notional', 0) or 0)
+                    investment = abs(notional)
+                    
+                    exchange_params = {
+                        "unique_id": unique_id,
+                        "operator_trade_time": update_dt,
+                        "pair": symbol.upper(),
+                        "investment": investment,
+                        "positionAmt": position_amt,
+                        "entryPrice": entry_price,
+                        "unRealizedProfit": unrealized_profit,
+                        "leverage": leverage_val,
+                        "positionSide": position_side,
+                        "hedge": 1 if is_hedge else 0,
+                    }
+                    exchange_insert = """
+                        INSERT INTO exchange_trade (
+                            unique_id, operator_trade_time, operator_close_time, type, pair,
+                            investment, stop_price, positionAmt, entryPrice, unRealizedProfit,
+                            leverage, positionSide, hedge
+                        ) VALUES (
+                            :unique_id, :operator_trade_time, NULL, 'running', :pair,
+                            :investment, 0, :positionAmt, :entryPrice, :unRealizedProfit,
+                            :leverage, :positionSide, CAST(:hedge AS BOOLEAN)
+                        )
+                    """
+                    
+                    # Build m1/alltraderecords document (same columns for both tables)
+                    doc = _olab_build_m1_alltraderecords_document(
+                        unique_id, update_dt, symbol.upper(), investment, position_amt,
+                        entry_price, unrealized_profit, leverage_val, position_side, is_hedge
+                    )
+                    try:
+                        from utils.timestamp_fix import apply_timestamp_fix_to_document
+                        fixed_doc = apply_timestamp_fix_to_document(olab_clean_timestamp_values(doc))
+                    except Exception:
+                        fixed_doc = olab_clean_timestamp_values(doc)
+                    cols = list(fixed_doc.keys())
+                    placeholders = ", ".join([":" + c for c in cols])
+                    cols_str = ", ".join(cols)
+                    m1_insert = f"INSERT INTO m1 ({cols_str}) VALUES ({placeholders})"
+                    alltraderecords_insert = f"INSERT INTO alltraderecords ({cols_str}) VALUES ({placeholders})"
+                    
+                    # Run all three inserts in one transaction; rollback if any fails, then retry
+                    with _sync_exchange_trades_lock:
+                        success = sql_helper.execute_in_transaction(
+                            [
+                                (exchange_insert, exchange_params),
+                                (m1_insert, fixed_doc),
+                                (alltraderecords_insert, fixed_doc),
+                            ],
+                            timeout=15,
+                            retries=2,
+                            delay=1,
+                            tag=f"sync_exchange_{symbol}_{side_str}",
+                        )
+                    
+                    if not success:
+                        raise Exception("Transaction failed (exchange_trade + m1 + alltraderecords)")
+                    
+                    inserted_count += 1
+                    print(f"[olab_sync_exchange_trades] DEBUG: insert SUCCESS: {unique_id} ({symbol} {side_str}) [exchange_trade + m1 + alltraderecords]")
+                    print(f"✅ Inserted exchange_trade + m1 + alltraderecords: {unique_id} ({symbol} {side_str})")
+                    
+                except Exception as e:
+                    error_msg = f"Error inserting position {symbol} {position_side}: {str(e)}"
+                    errors.append(error_msg)
+                    print(f"[olab_sync_exchange_trades] DEBUG: insert FAILED: {error_msg}")
+                    print(f"❌ {error_msg}")
+                    olab_log_db_error(e, "olab_sync_exchange_trades", f"symbol={symbol}")
+        
+        print(f"[olab_sync_exchange_trades] DEBUG: total from getAllOpenPosition={len(positions)}, already_existed={already_existed_count}, insert_success={inserted_count}, errors={len(errors)}")
+        return {
+            "inserted_count": inserted_count,
+            "updated_count": 0,
+            "already_existed_count": already_existed_count,
+            "errors": errors,
+            "hedge_trades": sum(1 for sym, pos_list in positions_by_symbol.items() if len(pos_list) >= 2)
+        }
+        
+    except Exception as e:
+        error_msg = f"Error in olab_sync_exchange_trades: {str(e)}"
+        errors.append(error_msg)
+        print(f"[olab_sync_exchange_trades] DEBUG: FATAL error: {error_msg}")
+        print(f"❌ {error_msg}")
+        olab_log_db_error(e, "olab_sync_exchange_trades", "main")
+        return {"inserted_count": inserted_count, "updated_count": 0, "already_existed_count": already_existed_count, "errors": errors}
 
 # print(get_cnt_pl_more_than_sixty('SELL', 20,5))

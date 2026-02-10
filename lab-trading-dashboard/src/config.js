@@ -18,8 +18,13 @@ function getBuildTimeDefault() {
     }
     return base;
   }
-  // When running on localhost (dev), use cloud server for data unless overridden (e.g. VITE_API_BASE_URL=http://localhost:3001 for local Node)
-  if (import.meta.env.MODE !== "production") return CLOUD_API;
+  // When running on localhost (dev), use relative paths (goes through Vite proxy to localhost:3001) unless VITE_API_BASE_URL is set
+  // If you want to use cloud server directly, set VITE_API_BASE_URL=http://150.241.244.130:10000
+  // If you want to use local server directly (bypass proxy), set VITE_API_BASE_URL=http://localhost:3001
+  if (import.meta.env.MODE !== "production") {
+    // Return empty string so api() returns relative paths, which Vite will proxy to localhost:3001
+    return "";
+  }
   if (typeof window !== "undefined" && window.location?.origin) {
     const o = window.location.origin;
     if (o.startsWith("http://150.241.244.130") || o.startsWith("http://localhost") || o.startsWith("https://localhost")) return "";
@@ -96,9 +101,27 @@ if (typeof window !== "undefined" && window.location?.hostname?.includes("github
 
 export { getApiBaseUrl, loadRuntimeApiConfig };
 
+let _apiDebugLogged = false;
 export function api(path) {
   const base = getApiBaseUrl();
-  return base ? `${base.replace(/\/$/, "")}${path.startsWith("/") ? path : `/${path}`}` : path;
+  const fullUrl = base ? `${base.replace(/\/$/, "")}${path.startsWith("/") ? path : `/${path}`}` : path;
+  if (typeof window !== "undefined") {
+    if (!_apiDebugLogged) {
+      _apiDebugLogged = true;
+      console.log("[API DEBUG] API base URL:", base || "(empty - requests will use Vite proxy to localhost:3001)");
+      if (window.location?.hostname === "localhost") {
+        if (!base) {
+          console.log("[API DEBUG] Using Vite proxy (localhost:3001). To use cloud API directly, set VITE_API_BASE_URL=http://150.241.244.130:10000");
+        } else if (base.includes("localhost:3001")) {
+          console.log("[API DEBUG] Using local server directly (bypassing proxy)");
+        } else if (base.includes("150.241.244.130")) {
+          console.log("[API DEBUG] Using cloud API directly");
+        }
+      }
+    }
+    console.log("[API DEBUG] api(\"" + path + "\") ->", fullUrl);
+  }
+  return fullUrl;
 }
 
 /** Base URL for the signals API (api_signals.py). On localhost we call local Python (5001); otherwise same as main API. */

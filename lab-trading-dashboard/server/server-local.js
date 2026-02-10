@@ -13,6 +13,14 @@ app.use(cors({
 }));
 
 app.use(express.json());
+
+// ✅ Log API requests so you can see when the app/charts call the server
+app.use((req, res, next) => {
+  if (req.path.startsWith("/api")) {
+    console.log("📥", req.method, req.path);
+  }
+  next();
+});
 // 150.241.244.130:5432/olab
 
 // ✅ Database Configuration — try localhost first, fallback to 150.241.244.130
@@ -90,7 +98,7 @@ async function initDatabase() {
       WHERE table_schema = 'public' 
       ORDER BY table_name;
     `);
-    console.log("📋 Available tables:", tablesResult.rows.map(r => r.table_name).join(', '));
+    // console.log("📋 Available tables:", tablesResult.rows.map(r => r.table_name).join(', '));
 
   } catch (error) {
     console.error("❌ Database connection failed:", error.message);
@@ -103,6 +111,7 @@ async function initDatabase() {
 app.get("/", async (req, res) => {
   try {
     const result = await pool.query('SELECT NOW() as server_time');
+    console.log("result", result);
     res.json({
       status: "✅ Local server is working!",
       database: "✅ PostgreSQL connected",
@@ -121,10 +130,8 @@ app.get("/", async (req, res) => {
 // ✅ API: Fetch All Trades
 app.get("/api/trades", async (req, res) => {
   try {
-    console.log("🔍 [Trades] Request received");
-    
-    const result = await pool.query("SELECT * FROM alltraderecords ORDER BY candel_time DESC NULLS LAST LIMIT 100;");
-    
+    // const result = await pool.query("SELECT * FROM alltraderecords ORDER BY candel_time DESC NULLS LAST LIMIT 100;");
+    const result = await pool.query("SELECT * FROM alltraderecords ORDER BY candel_time");
     console.log("✅ [Trades] Fetched", result.rows.length, "trades");
     if (result.rows.length > 0) {
       const r = result.rows[0];
@@ -293,6 +300,32 @@ app.post("/api/autopilot", (req, res) => {
 
 // ✅ Proxy to Python CalculateSignals API (run python api_signals.py on port 5001)
 const PYTHON_SIGNALS_URL = process.env.PYTHON_SIGNALS_URL || "http://localhost:5001";
+
+// ✅ Proxy to Python sync-open-positions (getAllOpenPosition → exchange_trade sync)
+app.get("/api/sync-open-positions", async (req, res) => {
+  try {
+    console.log("[sync-open-positions] Calling Python API:", PYTHON_SIGNALS_URL + "/api/sync-open-positions");
+    const SYNC_POSITIONS_TIMEOUT_MS = Number(process.env.SYNC_POSITIONS_TIMEOUT_MS) || 180000; // 3 min for many positions + DB
+    const resp = await fetch(`${PYTHON_SIGNALS_URL}/api/sync-open-positions`, {
+      method: "GET",
+      signal: AbortSignal.timeout(SYNC_POSITIONS_TIMEOUT_MS),
+    });
+    const data = await resp.json().catch(() => ({}));
+    // Debug: how many from getAllOpenPosition, if data existed, if insert success
+    const positionsCount = data.positions_count ?? "?";
+    const inserted = data.inserted_count ?? 0;
+    const alreadyExisted = data.already_existed_count ?? "?";
+    console.log("[sync-open-positions] DEBUG: positions from getAllOpenPosition =", positionsCount);
+    console.log("[sync-open-positions] DEBUG: already existed in exchange_trade (skipped) =", alreadyExisted);
+    console.log("[sync-open-positions] DEBUG: insert success count =", inserted);
+    console.log("[sync-open-positions] Python API response:", JSON.stringify(data, null, 2));
+    res.status(resp.status || 200).json(data);
+  } catch (err) {
+    console.error("[sync-open-positions] Proxy error:", err.message);
+    res.status(502).json({ ok: false, message: err.message || "Python signals service unavailable" });
+  }
+});
+
 app.post("/api/calculate-signals", async (req, res) => {
   try {
     console.log("[calculate-signals] Request body:", JSON.stringify(req.body));
@@ -311,11 +344,29 @@ app.post("/api/calculate-signals", async (req, res) => {
   }
 });
 
+// ✅ Fetch machines and print to console (used on startup)
+async function fetchAndPrintMachines() {
+  try {
+    const result = await pool.query("SELECT machineid, active FROM machines ORDER BY machineid;");
+    console.log("\n🖥️  Machines (" + result.rows.length + "):");
+    if (result.rows.length === 0) {
+      console.log("   (none)");
+    } else {
+      result.rows.forEach((row, i) => {
+        console.log("   " + (i + 1) + ". machineid:", row.machineid, "| active:", row.active);
+      });
+    }
+    console.log("");
+  } catch (err) {
+    console.error("❌ [Startup] Could not fetch machines:", err.message);
+  }
+}
+
 // ✅ Initialize and Start Server
 async function startServer() {
   await initDatabase();
   
-  app.listen(PORT, () => {
+  app.listen(PORT, async () => {
     console.log("\n🚀 Local Server Started Successfully!");
     console.log("📍 Server URL: http://localhost:" + PORT);
     console.log("🗄️ Database: " + dbConfig.host + ":" + dbConfig.port + "/" + dbConfig.database);
@@ -328,6 +379,8 @@ async function startServer() {
     console.log("   GET  /api/bot-event-logs       - Fetch bot event logs (uid, page, limit)");
     console.log("   POST /api/calculate-signals    - Proxy to Python (PYTHON_SIGNALS_URL)");
     console.log("\n✨ Ready to serve data from your Ubuntu trading server!");
+
+    await fetchAndPrintMachines();
   });
 }
 

@@ -32,8 +32,8 @@ M4_secret= 'nGk5dOAYTnAaxVnRDhXxegaCdGYEyzGAxx53ryeWDIob1XXAMlazDQGO8mFEIYJS'
 
 
 
-api='d8d0107edbc3794599efcbd9ae6b640bf46241b48d866edc806df65f0b6dbc22'
-secret='476a347161016506113c608fdd621a502e3e72b786f126f4da10af2a9f9335c2'
+api='IzH3bfzRcHT6i0BNWubV63vzz4pWIk6gZsGIT0YlOvQaoB7AdxCNW3A8sJDZ8NfF'
+secret='f162MJ10lKiB2tnmTy4EADrO5tn3f9ppHBiTFfpX8peUB0L6UPuXjMH9sJj65opo'
 
 connection_string = (
     'DRIVER={ODBC Driver 17 for SQL Server};'

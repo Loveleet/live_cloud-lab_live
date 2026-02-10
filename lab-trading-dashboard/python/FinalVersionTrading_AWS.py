@@ -1761,6 +1761,12 @@ def calculate_all_indicators_optimized(df, candle='regular'):
 
         df['BB_Width'] = df['BOLL_upper_band'] - df['BOLL_lower_band']
         df['bb_flat_market'] = df['BB_Width'] < df['BB_Width'].rolling(window=20).mean()
+
+                # ---- bb_flat_signal ----
+        df['bb_flat_signal'] = 'NONE'
+
+        df.loc[df['bb_flat_market'] & (df[close_col] < df['BOLL_middle_band']), 'bb_flat_signal'] = 'BUY'
+        df.loc[df['bb_flat_market'] & (df[close_col] > df['BOLL_middle_band']), 'bb_flat_signal'] = 'SELL'
         
         flat_window = 3  # try 10–14 on 15m/30m, 20 on 1m/3m
         hiN = df[high_col].rolling(flat_window).max()
@@ -1829,6 +1835,12 @@ def calculate_all_indicators_optimized(df, candle='regular'):
 
         # Bearish crossover: 5 crosses DOWN below 8
         df['ema_5_8_cross_down'] = (~df['ema_5_above_8']) & (prev_5_above_8 == True)
+
+        # Final label
+        df["ema_5_8_cross"] = np.where(
+            df["ema_5_8_cross_up"], "BUY",
+            np.where(df["ema_5_8_cross_down"], "SELL", "NONE")
+            )
 
         # 2) 5 & 8 vs 100: regimes
 
@@ -2393,7 +2405,7 @@ def calculate_all_indicators_optimized(df, candle='regular'):
 
         df['tdfi_state_3_ema'] = tmp2['tdfi_state']
 
-        df = label_heikin_types(df)
+        df = build_ha_decision_df_single(df)
         df = label_candle_types_regular(df)
 
                 # === Price-action based exits (structure + patterns) ==============
@@ -3017,69 +3029,90 @@ def is_order_allowed(order_time, last_div_str, action,hour):
 
     return True
 
-def label_heikin_types(df,
-    doji_ratio=0.1,        # body <= 10% of range → DOJI
-    spin_ratio=0.3,        # body <= 30% of range → SPIN_TOP
-    strong_body=0.7,       # body >= 70% of range → STRONG_*
-    hammer_wick=2.0,       # lower wick >= 2x body and upper wick small → HAMMER
-    inv_hammer_wick=2.0,   # upper wick >= 2x body and lower wick small → INV_HAMMER
-    small_wick=0.2         # “small” wick = ≤ 20% of total range
-):
-   
-    o, h, l, c = df['ha_open'], df['ha_high'], df['ha_low'], df['ha_close']
+def build_ha_decision_df_single(
+    df: pd.DataFrame,
+    doji_ratio: float = 0.10,
+    spin_ratio: float = 0.30,
+    strong_body: float = 0.60,
+    tiny_wick: float = 0.10,
+    flip_window: int = 3,
+    flip_min_changes: int = 2,
+    require_two_strong: bool = False,   # set True if you want 2 strong candles confirmation
+    time_col: str | None = None         # optional (not required)
+) -> pd.DataFrame:
+    """
+    Uses only ONE dataframe with HA columns and returns same df with a final
+    column: decision in {'BUY','SELL','SKIP'}.
 
-    rng   = (h - l).replace(0, np.nan)
-    body  = (c - o).abs()
-    up_w  = h - np.maximum(c, o)
-    dn_w  = np.minimum(c, o) - l
+    REQUIRED columns:
+      ha_open, ha_high, ha_low, ha_close
+    """
 
-    # Primary shape tags
+    out = df.copy()
+
+    # Optional sort by time
+    if time_col and time_col in out.columns:
+        out[time_col] = pd.to_datetime(out[time_col], utc=True, errors="coerce")
+        out = out.dropna(subset=[time_col]).sort_values(time_col).reset_index(drop=True)
+
+    o, h, l, c = out["ha_open"], out["ha_high"], out["ha_low"], out["ha_close"]
+
+    rng  = (h - l).replace(0, np.nan)
+    body = (c - o).abs()
+
+    up_w = h - np.maximum(c, o)
+    dn_w = np.minimum(c, o) - l
+
     is_green = c >= o
     is_red   = ~is_green
 
-    # Ratios
     body_r = (body / rng).clip(0, 1)
     up_r   = (up_w / rng).fillna(0)
     dn_r   = (dn_w / rng).fillna(0)
 
-    # Core types
-    is_doji     = (body_r <= doji_ratio)
-    is_spin     = (~is_doji) & (body_r <= spin_ratio)
-    is_strong   = (body_r >= strong_body)
+    is_doji = body_r <= doji_ratio
+    is_spin = (~is_doji) & (body_r <= spin_ratio)
 
-    # Wick-based
-    is_hammer   = (dn_w >= hammer_wick*body) & (up_r <= small_wick)
-    is_inv_ham  = (up_w >= inv_hammer_wick*body) & (dn_r <= small_wick)
+    strong_bull = is_green & (body_r >= strong_body) & (dn_r <= tiny_wick)
+    strong_bear = is_red   & (body_r >= strong_body) & (up_r <= tiny_wick)
 
-    # Relationship vs previous bar (HA)
-    prev_h = h.shift(1); prev_l = l.shift(1)
-    prev_o = o.shift(1); prev_c = c.shift(1)
-    prev_hi_body = np.maximum(prev_o, prev_c)
-    prev_lo_body = np.minimum(prev_o, prev_c)
+    out["henkin_candle_pattern_signal"] = np.where(
+        is_doji, "HA_DOJI",
+        np.where(
+            is_spin, "HA_INDECISION",
+            np.where(
+                strong_bull, "HA_STRONG_BULL",
+                np.where(strong_bear, "HA_STRONG_BEAR",
+                         np.where(is_green, "HA_BULL", "HA_BEAR"))
+            )
+        )
+    )
 
-    # Relaxed engulf on HA (engulf body edges)
-    bull_engulf = (is_green & (prev_c < prev_o) &
-                   (c >= prev_hi_body) & (o <= prev_lo_body))
-    bear_engulf = (is_red   & (prev_c > prev_o) &
-                   (c <= prev_lo_body) & (o >= prev_hi_body))
+    out["henkin_is_strong"] = out["henkin_candle_pattern_signal"].isin(["HA_STRONG_BULL", "HA_STRONG_BEAR", "HA_BULL", "HA_BEAR"])
+    out["henkin_is_weak"]   = out["henkin_candle_pattern_signal"].isin(["HA_DOJI", "HA_INDECISION"])
 
-    inside_bar  = (h <= prev_h) & (l >= prev_l)
-    outside_bar = (h >= prev_h) & (l <= prev_l)
+    # flip/chop detection
+    ha_color = is_green.astype(int)  # 1 green, 0 red
+    changes = ha_color.diff().abs()
+    out["henkin_flip"] = (changes.rolling(flip_window).sum() >= flip_min_changes).fillna(False)
 
-    # Final label precedence (top-down priority)
-    label = np.where(bull_engulf, 'BULL_ENGULF',
-             np.where(bear_engulf, 'BEAR_ENGULF',
-             np.where(is_doji,      'DOJI',
-             np.where(is_hammer,    'HAMMER',
-             np.where(is_inv_ham,   'INVERTED_HAMMER',
-             np.where(outside_bar,  'OUTSIDE_BAR',
-             np.where(inside_bar,   'INSIDE_BAR',
-             np.where(is_green & is_strong, 'STRONG_BULL',
-             np.where(is_red   & is_strong, 'STRONG_BEAR',
-             np.where(is_green,             'BULL', 'BEAR'))))))))))
+    # Entry permissions (single df)
+    buy_ok  = (out["henkin_candle_pattern_signal"] == "HA_STRONG_BULL") & (~out["henkin_flip"])
+    sell_ok = (out["henkin_candle_pattern_signal"] == "HA_STRONG_BEAR") & (~out["henkin_flip"])
 
-    df['candle_pattern_signal'] = label
-    return df
+    # Optional: require 2 strong candles confirmation
+    if require_two_strong:
+        buy_ok  = buy_ok  & (out["henkin_candle_pattern_signal"].shift(1) == "HA_STRONG_BULL")
+        sell_ok = sell_ok & (out["henkin_candle_pattern_signal"].shift(1) == "HA_STRONG_BEAR")
+
+    out["henkin_decision"] = np.where(buy_ok, "BUY",
+                        np.where(sell_ok, "SELL", "SKIP"))
+
+
+
+    return out
+
+
 
 def label_candle_types_regular(
     df,
