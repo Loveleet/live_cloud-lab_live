@@ -81,6 +81,9 @@ const SIGNALS_VIEW_MODE_KEY = "singleTradeLiveView_signalsViewMode";
 const SIGNAL_ALERT_RULES_KEY = "singleTradeLiveView_signalAlertRules";
 const ALERT_RULE_GROUPS_KEY = "singleTradeLiveView_alertRuleGroups";
 const MASTER_BLINK_COLOR_KEY = "singleTradeLiveView_masterBlinkColor";
+const ACTIVE_RULE_BOOK_ID_KEY = "singleTradeLiveView_activeRuleBookId";
+const BINANCE_COLUMNS_ORDER_KEY = "singleTradeLiveView_binanceColumnsOrder";
+const BINANCE_COLUMNS_VISIBILITY_KEY = "singleTradeLiveView_binanceColumnsVisibility";
 const SECTION_IDS = ["information", "binanceData", "chart"];
 const SECTION_LABELS = { information: "Information", binanceData: "Binance Data", chart: "Chart" };
 
@@ -855,6 +858,19 @@ function LiveTradeChartSection({
   const [bulkGroupName, setBulkGroupName] = useState("");
   const [bulkGroupColor, setBulkGroupColor] = useState("");
   const [editingGroupId, setEditingGroupId] = useState(null);
+  const [serverRuleBooks, setServerRuleBooks] = useState([]);
+  const [selectedRuleBookId, setSelectedRuleBookId] = useState(() => {
+    try {
+      const raw = localStorage.getItem(ACTIVE_RULE_BOOK_ID_KEY);
+      if (!raw) return null;
+      const parsed = parseInt(raw, 10);
+      return Number.isFinite(parsed) ? parsed : null;
+    } catch {
+      return null;
+    }
+  });
+  const [ruleBooksLoading, setRuleBooksLoading] = useState(false);
+  const [ruleBooksError, setRuleBooksError] = useState("");
   const sortedAlertRules = useMemo(() => {
     const sorted = [...(alertRules || [])];
     sorted.sort((a, b) => {
@@ -875,6 +891,137 @@ function LiveTradeChartSection({
     } catch {}
   }, [intervalOrder]);
 
+  // --- Server-side rule books (load list when settings modal is opened) ---
+  useEffect(() => {
+    if (!showAlertSettings) return;
+    if (serverRuleBooks && serverRuleBooks.length > 0) return;
+    let cancelled = false;
+    const loadRuleBooks = async () => {
+      setRuleBooksLoading(true);
+      setRuleBooksError("");
+      try {
+        const res = await fetch(api("/api/alert-rule-books"));
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(data.error || res.statusText || "Failed to load rule books");
+        }
+        if (!cancelled) {
+          const list = Array.isArray(data.ruleBooks) ? data.ruleBooks : [];
+          setServerRuleBooks(list);
+        }
+      } catch (e) {
+        console.error("[RuleBooks] Load failed:", e);
+        if (!cancelled) setRuleBooksError(e?.message || "Failed to load rule books");
+      } finally {
+        if (!cancelled) setRuleBooksLoading(false);
+      }
+    };
+    loadRuleBooks();
+    return () => {
+      cancelled = true;
+    };
+  }, [showAlertSettings, serverRuleBooks]);
+
+  const handleLoadRuleBook = useCallback(
+    async (id) => {
+      if (!id) return;
+      try {
+        const res = await fetch(api(`/api/alert-rule-books/${id}`));
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(data.error || res.statusText || "Failed to load rule book");
+        }
+        const payload = data.payload || {};
+        const rules = Array.isArray(payload.rules) ? payload.rules : [];
+        const groups = Array.isArray(payload.groups) ? payload.groups : [];
+        const masterColor = payload.masterBlinkColor || masterBlinkColor || "#f97316";
+        setAlertRules(rules);
+        setAlertRuleGroups(groups);
+        setMasterBlinkColor(masterColor);
+        setSelectedRuleBookId(data.id || id);
+        try {
+          localStorage.setItem(ACTIVE_RULE_BOOK_ID_KEY, String(data.id || id));
+        } catch {}
+      } catch (e) {
+        console.error("[RuleBooks] Load book failed:", e);
+        if (typeof window !== "undefined") {
+          window.alert(e?.message || "Failed to load rule book");
+        }
+      }
+    },
+    [setAlertRules, setAlertRuleGroups, setMasterBlinkColor, masterBlinkColor]
+  );
+
+  const handleSaveRuleBook = useCallback(
+    async (mode) => {
+      try {
+        if (!alertRules || !alertRules.length) {
+          window.alert("No rules to save. Create some rules first.");
+          return;
+        }
+        let name = "";
+        let id = null;
+        if (mode === "new") {
+          name = window.prompt("Enter a name for this rule book:");
+          if (!name || !name.trim()) return;
+        } else if (mode === "update") {
+          const current = serverRuleBooks.find((b) => b.id === selectedRuleBookId);
+          if (!current) {
+            window.alert("No rule book is selected to update.");
+            return;
+          }
+          name = current.name;
+          id = current.id;
+        } else {
+          return;
+        }
+
+        const payload = {
+          type: "lab_single_trade_alert_rules",
+          version: 2,
+          createdAt: new Date().toISOString(),
+          rules: alertRules || [],
+          groups: alertRuleGroups || [],
+          masterBlinkColor: masterBlinkColor || "#f97316",
+        };
+
+        const res = await fetch(api("/api/alert-rule-books"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id, name: name.trim(), payload }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) {
+          throw new Error(data.error || res.statusText || "Failed to save rule book");
+        }
+        // Refresh list and remember active id
+        const saved = data.ruleBook;
+        try {
+          localStorage.setItem(ACTIVE_RULE_BOOK_ID_KEY, String(saved.id));
+        } catch {}
+        setSelectedRuleBookId(saved.id);
+        // Reload list
+        try {
+          const listRes = await fetch(api("/api/alert-rule-books"));
+          const listData = await listRes.json().catch(() => ({}));
+          const list = Array.isArray(listData.ruleBooks) ? listData.ruleBooks : [];
+          setServerRuleBooks(list);
+        } catch (e2) {
+          console.error("[RuleBooks] Reload list failed:", e2);
+        }
+        if (typeof window !== "undefined") {
+          window.alert(mode === "new" ? "Rule book saved on server." : "Rule book updated on server.");
+        }
+      } catch (e) {
+        console.error("[RuleBooks] Save failed:", e);
+        if (typeof window !== "undefined") {
+          window.alert(e?.message || "Failed to save rule book");
+        }
+      }
+    },
+    [alertRules, alertRuleGroups, masterBlinkColor, serverRuleBooks, selectedRuleBookId]
+  );
+
   const handleExportAlertRules = useCallback(() => {
     if (typeof window === "undefined" || !window.document) return;
     try {
@@ -884,6 +1031,7 @@ function LiveTradeChartSection({
         createdAt: new Date().toISOString(),
         rules: alertRules || [],
         groups: alertRuleGroups || [],
+        masterBlinkColor: masterBlinkColor || "#f97316",
       };
       const json = JSON.stringify(payload, null, 2);
       const blob = new Blob([json], { type: "application/json" });
@@ -1162,6 +1310,66 @@ function LiveTradeChartSection({
               <span className="font-semibold text-violet-200">Interval</span> and{" "}
               <span className="font-semibold text-violet-200">Candle row</span> (current / prev / prior).
             </p>
+            {/* Server-side rule books */}
+            <div className="mb-4 p-3 rounded-xl bg-[#181818] border border-violet-700/60 space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-semibold text-violet-200">Rule books (saved on server)</span>
+                <select
+                  className="bg-[#111] border border-gray-700 rounded px-2 py-1 text-[11px] min-w-[160px]"
+                  value={selectedRuleBookId || ""}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (!v) {
+                      setSelectedRuleBookId(null);
+                      try {
+                        localStorage.removeItem(ACTIVE_RULE_BOOK_ID_KEY);
+                      } catch {}
+                      return;
+                    }
+                    const id = parseInt(v, 10);
+                    if (Number.isFinite(id)) {
+                      setSelectedRuleBookId(id);
+                      handleLoadRuleBook(id);
+                    }
+                  }}
+                >
+                  <option value="">(None selected)</option>
+                  {serverRuleBooks.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+                {ruleBooksLoading && (
+                  <span className="text-[11px] text-gray-400">Loading…</span>
+                )}
+                {ruleBooksError && (
+                  <span className="text-[11px] text-amber-400">
+                    {ruleBooksError}
+                  </span>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                <button
+                  type="button"
+                  className="px-2 py-1 rounded bg-emerald-700 hover:bg-emerald-600"
+                  onClick={() => handleSaveRuleBook("new")}
+                >
+                  Save as new rule book
+                </button>
+                <button
+                  type="button"
+                  className="px-2 py-1 rounded bg-blue-700 hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed"
+                  disabled={!selectedRuleBookId}
+                  onClick={() => handleSaveRuleBook("update")}
+                >
+                  Update selected rule book
+                </button>
+                <span className="text-[11px] text-gray-400">
+                  Rule books are stored in the server database and can be loaded from GitHub Pages or localhost.
+                </span>
+              </div>
+            </div>
             {/* Master blink color */}
             <div className="mb-4 p-3 rounded-xl bg-[#181818] border border-violet-700/60 flex flex-wrap items-center gap-3">
               <span className="text-xs font-semibold text-violet-200">Master blink color</span>
@@ -2457,16 +2665,37 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
   const [exchangePositionData, setExchangePositionData] = useState(null);
 
   // --- Binance Data table settings: column order + visibility (+ actions column) ---
-  const [binanceColumns, setBinanceColumns] = useState([]);
-  const [binanceColumnVisibility, setBinanceColumnVisibility] = useState({});
+  const [binanceColumns, setBinanceColumns] = useState(() => {
+    try {
+      const v = localStorage.getItem(BINANCE_COLUMNS_ORDER_KEY);
+      if (v) {
+        const arr = JSON.parse(v);
+        if (Array.isArray(arr) && arr.length) return arr;
+      }
+    } catch {}
+    return [];
+  });
+  const [binanceColumnVisibility, setBinanceColumnVisibility] = useState(() => {
+    try {
+      const v = localStorage.getItem(BINANCE_COLUMNS_VISIBILITY_KEY);
+      if (v) {
+        const obj = JSON.parse(v);
+        if (obj && typeof obj === "object") return obj;
+      }
+    } catch {}
+    return {};
+  });
   const [binanceSettingsOpen, setBinanceSettingsOpen] = useState(false);
 
   useEffect(() => {
     if (exchangePositionData?.positions?.length) {
       const keys = Object.keys(exchangePositionData.positions[0]);
       setBinanceColumns((prev) => {
-        if (Array.isArray(prev) && prev.length > 0) return prev;
-        // Special first column for the per-row action buttons
+        if (Array.isArray(prev) && prev.length > 0) {
+          const ordered = prev.filter((c) => c === "__actions__" || keys.includes(c));
+          const added = keys.filter((k) => !ordered.includes(k));
+          return ["__actions__", ...ordered.filter((x) => x !== "__actions__"), ...added];
+        }
         return ["__actions__", ...keys];
       });
       setBinanceColumnVisibility((prev) => {
@@ -2520,6 +2749,8 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
     } catch {}
     return null;
   });
+  const serverSettingsAppliedRef = useRef(false);
+  const [serverUiSettings, setServerUiSettings] = useState(null);
   const orderedKeys = fieldOrder && fieldOrder.length
     ? [...fieldOrder.filter((k) => allKeys.includes(k)), ...allKeys.filter((k) => !fieldOrder.includes(k))]
     : allKeys;
@@ -2573,12 +2804,113 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
     } catch {}
     return "intervalWise";
   });
+
+  // Persist a single UI setting to cloud and localStorage (used below and in layout useEffects)
+  const saveUiSetting = useCallback((key, value) => {
+    try {
+      localStorage.setItem(key, typeof value === "string" ? value : JSON.stringify(value));
+    } catch {}
+    const url = api("/api/ui-settings");
+    fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key, value }),
+    })
+      .then((res) => {
+        if (!res.ok) {
+          return res.json().then((d) => { throw new Error(d?.error || res.statusText); });
+        }
+        return res.json();
+      })
+      .then(() => {
+        if (key === BINANCE_COLUMNS_ORDER_KEY || key === BINANCE_COLUMNS_VISIBILITY_KEY) {
+          console.debug("[UI Settings] Saved to server:", key);
+        }
+      })
+      .catch((err) => {
+        console.warn("[UI Settings] Save failed for", key, ":", err?.message || err);
+      });
+  }, []);
+
   useEffect(() => {
     localStorage.setItem(INFO_SPLIT_KEY, String(infoSplitPercent));
-  }, [infoSplitPercent]);
+    saveUiSetting(INFO_SPLIT_KEY, infoSplitPercent);
+  }, [infoSplitPercent, saveUiSetting]);
   useEffect(() => {
     localStorage.setItem(SIGNALS_VIEW_MODE_KEY, signalsTableViewMode);
-  }, [signalsTableViewMode]);
+    saveUiSetting(SIGNALS_VIEW_MODE_KEY, signalsTableViewMode);
+  }, [signalsTableViewMode, saveUiSetting]);
+
+  // Load UI settings from cloud so layout persists when using GitHub Pages / different browser
+  useEffect(() => {
+    let cancelled = false;
+    const url = api("/api/ui-settings");
+    fetch(url)
+      .then((res) => {
+        if (!res.ok) {
+          console.warn("[UI Settings] GET failed:", res.status, res.statusText);
+          return res.json().then((d) => { throw new Error(d?.error || res.statusText); });
+        }
+        return res.json();
+      })
+      .then((data) => {
+        if (cancelled) return;
+        const list = Array.isArray(data?.settings) ? data.settings : [];
+        const map = {};
+        list.forEach((s) => {
+          if (s && s.key != null) {
+            let val = s.value;
+            if (typeof val === "string") {
+              try {
+                val = JSON.parse(val);
+              } catch (_) { /* keep string */ }
+            }
+            map[s.key] = val;
+          }
+        });
+        if (list.length > 0) console.debug("[UI Settings] Loaded from server:", Object.keys(map));
+        setServerUiSettings(map);
+      })
+      .catch((err) => {
+        console.warn("[UI Settings] Load error:", err?.message || err);
+        setServerUiSettings({});
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  // Apply server settings once when loaded (overrides localStorage for remote consistency)
+  useEffect(() => {
+    if (serverUiSettings == null || serverSettingsAppliedRef.current) return;
+    serverSettingsAppliedRef.current = true;
+    if (Array.isArray(serverUiSettings[INFO_FIELD_ORDER_KEY]) && serverUiSettings[INFO_FIELD_ORDER_KEY].length) {
+      setFieldOrder(serverUiSettings[INFO_FIELD_ORDER_KEY]);
+    }
+    if (Array.isArray(serverUiSettings[INFO_FIELDS_KEY])) {
+      setVisibleKeys(new Set(serverUiSettings[INFO_FIELDS_KEY]));
+    }
+    const sectionArr = serverUiSettings[SECTION_ORDER_KEY];
+    if (Array.isArray(sectionArr) && sectionArr.length === SECTION_IDS.length && SECTION_IDS.every((id) => sectionArr.includes(id))) {
+      setSectionOrder(sectionArr);
+    }
+    if (typeof serverUiSettings[INFO_SPLIT_KEY] === "number" || (typeof serverUiSettings[INFO_SPLIT_KEY] === "string" && serverUiSettings[INFO_SPLIT_KEY] !== "")) {
+      const n = parseInt(serverUiSettings[INFO_SPLIT_KEY], 10);
+      if (!Number.isNaN(n)) setInfoSplitPercent(Math.max(20, Math.min(80, n)));
+    }
+    if (serverUiSettings[SIGNALS_VIEW_MODE_KEY] === "rowWise" || serverUiSettings[SIGNALS_VIEW_MODE_KEY] === "intervalWise") {
+      setSignalsTableViewMode(serverUiSettings[SIGNALS_VIEW_MODE_KEY]);
+    }
+    const binanceOrder = serverUiSettings[BINANCE_COLUMNS_ORDER_KEY];
+    if (Array.isArray(binanceOrder) && binanceOrder.length) {
+      console.debug("[UI Settings] Applying Binance column order from server:", binanceOrder.length, "columns");
+      setBinanceColumns(binanceOrder);
+    }
+    const binanceVis = serverUiSettings[BINANCE_COLUMNS_VISIBILITY_KEY];
+    if (binanceVis && typeof binanceVis === "object" && !Array.isArray(binanceVis)) {
+      console.debug("[UI Settings] Applying Binance column visibility from server");
+      setBinanceColumnVisibility(binanceVis);
+    }
+  }, [serverUiSettings]);
+
   // backSplitPercent is no longer used (Binance Data is a single panel now), so we stop updating it.
 
   const [zoomInfoLeft, zoomOutInfoLeft, zoomInInfoLeft] = useZoomLevel(ZOOM_KEYS.infoLeft);
@@ -2635,20 +2967,39 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
       try {
         localStorage.setItem(INFO_FIELD_ORDER_KEY, JSON.stringify(fieldOrder));
       } catch {}
+      saveUiSetting(INFO_FIELD_ORDER_KEY, fieldOrder);
     }
-  }, [fieldOrder]);
+  }, [fieldOrder, saveUiSetting]);
   useEffect(() => {
     if (visibleKeys && visibleKeys.size > 0) {
       try {
         localStorage.setItem(INFO_FIELDS_KEY, JSON.stringify([...visibleKeys]));
       } catch {}
+      saveUiSetting(INFO_FIELDS_KEY, [...visibleKeys]);
     }
-  }, [visibleKeys]);
+  }, [visibleKeys, saveUiSetting]);
   useEffect(() => {
     try {
       localStorage.setItem(SECTION_ORDER_KEY, JSON.stringify(sectionOrder));
     } catch {}
-  }, [sectionOrder]);
+    saveUiSetting(SECTION_ORDER_KEY, sectionOrder);
+  }, [sectionOrder, saveUiSetting]);
+  useEffect(() => {
+    if (binanceColumns.length > 0) {
+      try {
+        localStorage.setItem(BINANCE_COLUMNS_ORDER_KEY, JSON.stringify(binanceColumns));
+      } catch {}
+      saveUiSetting(BINANCE_COLUMNS_ORDER_KEY, binanceColumns);
+    }
+  }, [binanceColumns, saveUiSetting]);
+  useEffect(() => {
+    if (Object.keys(binanceColumnVisibility).length > 0) {
+      try {
+        localStorage.setItem(BINANCE_COLUMNS_VISIBILITY_KEY, JSON.stringify(binanceColumnVisibility));
+      } catch {}
+      saveUiSetting(BINANCE_COLUMNS_VISIBILITY_KEY, binanceColumnVisibility);
+    }
+  }, [binanceColumnVisibility, saveUiSetting]);
   useEffect(() => {
     try {
       localStorage.setItem(SIGNAL_ALERT_RULES_KEY, JSON.stringify(alertRules));
@@ -2724,6 +3075,9 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
           setAlertRules(rules);
           const groups = Array.isArray(parsed?.groups) ? parsed.groups : [];
           setAlertRuleGroups(groups);
+          if (parsed?.masterBlinkColor && /^#[0-9A-Fa-f]{6}$/.test(parsed.masterBlinkColor)) {
+            setMasterBlinkColor(parsed.masterBlinkColor);
+          }
         } catch (err) {
           console.error("[AlertRules] Import parse error:", err);
           window.alert("Failed to parse script file. See console for details.");
