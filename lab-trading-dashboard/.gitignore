@@ -20,6 +20,11 @@ server/server.js
 .DS_Store
 *.log
 
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
 # Local
 venv/
 .venv/

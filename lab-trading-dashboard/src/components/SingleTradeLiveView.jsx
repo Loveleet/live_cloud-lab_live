@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Play, Settings, Square, Shield, Crosshair, LayoutGrid } from "lucide-react";
 import { formatTradeData } from "./TableView";
 import { LogoutButton } from "../auth";
-import { API_BASE_URL, api, apiSignals, getApiBaseUrl } from "../config";
+import { API_BASE_URL, api, apiSignals } from "../config";
 
 const REFRESH_INTERVAL_KEY = "refresh_app_main_intervalSec";
 
@@ -2612,16 +2612,27 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
 
   const chartSize = { width: 500, height: chartHeight };
 
-  // Call Python backend API (backend must expose these endpoints, e.g. Flask/FastAPI)
+  // Call Python backend API (backend must expose these endpoints, e.g. Flask/FastAPI).
+  // Empty getApiBaseUrl() is valid (localhost → relative URL / Vite proxy; cloud → same-origin).
   const callPythonApi = useCallback(async (endpoint, body) => {
-    const res = await fetch(api(endpoint), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
+    const url = api(endpoint);
+    let res;
+    try {
+      res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    } catch (e) {
+      throw new Error("Network error: cannot reach the API. If on localhost, start the server (e.g. node server or Python api_signals). If on GitHub Pages, wait for the page to load and try again.");
+    }
     if (!res.ok) {
       const err = await res.json().catch(() => ({ message: res.statusText }));
-      throw new Error(err.message || err.detail || `API error ${res.status}`);
+      const msg = err.message || err.detail || res.statusText;
+      if (res.status === 404) {
+        throw new Error("API endpoint not found. Is the server running? Start the backend (e.g. node server on port 10000) and try again.");
+      }
+      throw new Error(msg || `API error ${res.status}`);
     }
     return res.json().catch(() => ({}));
   }, []);
@@ -2667,17 +2678,21 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
   }, [rawTrade?.unique_id, callPythonApi]);
 
   const handleAutoPilot = useCallback(async ({ password }) => {
-    const base = getApiBaseUrl();
-    if (!base) throw new Error("API not configured");
+    // Empty base is valid on localhost (relative URL → Vite proxy) and on cloud (same-origin)
     const unique_id = rawTrade?.unique_id;
-    const res = await fetch(api("/api/autopilot"), {
+    const url = api("/api/autopilot");
+    const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ unique_id, password: (password || "").trim(), enabled: true }),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ message: res.statusText }));
-      throw new Error(err.message || err.detail || `API error ${res.status}`);
+      const msg = err.message || err.detail || res.statusText;
+      if (res.status === 404) {
+        throw new Error("API endpoint not found. Is the server running? If using GitHub Pages, wait for api-config to load and try again.");
+      }
+      throw new Error(msg || `API error ${res.status}`);
     }
     const data = await res.json().catch(() => ({}));
     return data;
