@@ -4,22 +4,19 @@
 
 /* Global custom styles */
 @layer base {
-  /* High‑visibility blinking for signal cells */
+  /* High‑visibility blinking for signal cells. No scale() to avoid scrollbar resize. Colors via --lab-alert-bg / --lab-alert-shadow. */
   @keyframes lab-alert-cell-pulse {
     0% {
-      box-shadow: 0 0 0 0 rgba(250, 204, 21, 0.9);
-      background-color: #f97316;
-      transform: scale(1);
+      box-shadow: 0 0 0 0 var(--lab-alert-shadow, rgba(250, 204, 21, 0.9));
+      background-color: var(--lab-alert-bg, #f97316);
     }
     50% {
-      box-shadow: 0 0 16px 4px rgba(250, 204, 21, 1);
-      background-color: #ef4444;
-      transform: scale(1.08);
+      box-shadow: 0 0 12px 3px var(--lab-alert-shadow, rgba(250, 204, 21, 1));
+      background-color: var(--lab-alert-bg-peak, #ef4444);
     }
     100% {
-      box-shadow: 0 0 0 0 rgba(250, 204, 21, 0.9);
-      background-color: #f97316;
-      transform: scale(1);
+      box-shadow: 0 0 0 0 var(--lab-alert-shadow, rgba(250, 204, 21, 0.9));
+      background-color: var(--lab-alert-bg, #f97316);
     }
   }
 
@@ -29,6 +26,9 @@
     color: #000;
     font-weight: 700;
     animation: lab-alert-cell-pulse 0.8s ease-in-out infinite;
+    min-width: 3rem;
+    min-height: 1.5rem;
+    box-sizing: border-box;
   }
 }
 
