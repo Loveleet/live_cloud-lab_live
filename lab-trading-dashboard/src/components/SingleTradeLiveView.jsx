@@ -80,6 +80,7 @@ const SECTION_ORDER_KEY = "singleTradeLiveView_sectionOrder";
 const SIGNALS_VIEW_MODE_KEY = "singleTradeLiveView_signalsViewMode";
 const SIGNAL_ALERT_RULES_KEY = "singleTradeLiveView_signalAlertRules";
 const ALERT_RULE_GROUPS_KEY = "singleTradeLiveView_alertRuleGroups";
+const MASTER_BLINK_COLOR_KEY = "singleTradeLiveView_masterBlinkColor";
 const SECTION_IDS = ["information", "binanceData", "chart"];
 const SECTION_LABELS = { information: "Information", binanceData: "Binance Data", chart: "Chart" };
 
@@ -808,6 +809,8 @@ function LiveTradeChartSection({
   setAlertRules,
   alertRuleGroups,
   setAlertRuleGroups,
+  masterBlinkColor,
+  setMasterBlinkColor,
   showAlertSettings,
   setShowAlertSettings,
 }) {
@@ -851,6 +854,7 @@ function LiveTradeChartSection({
   const [bulkNumberThreshold, setBulkNumberThreshold] = useState(0);
   const [ruleSortKey, setRuleSortKey] = useState("signalKey");
   const [bulkGroupName, setBulkGroupName] = useState("");
+  const [bulkGroupColor, setBulkGroupColor] = useState("");
   const [editingGroupId, setEditingGroupId] = useState(null);
   const sortedAlertRules = useMemo(() => {
     const sorted = [...(alertRules || [])];
@@ -877,9 +881,10 @@ function LiveTradeChartSection({
     try {
       const payload = {
         type: "lab_single_trade_alert_rules",
-        version: 1,
+        version: 2,
         createdAt: new Date().toISOString(),
         rules: alertRules || [],
+        groups: alertRuleGroups || [],
       };
       const json = JSON.stringify(payload, null, 2);
       const blob = new Blob([json], { type: "application/json" });
@@ -898,7 +903,7 @@ function LiveTradeChartSection({
         window.alert("Failed to export rules. See console for details.");
       }
     }
-  }, [alertRules]);
+  }, [alertRules, alertRuleGroups]);
 
   const handleImportAlertRulesClick = useCallback(() => {
     if (importInputRef.current) {
@@ -927,6 +932,8 @@ function LiveTradeChartSection({
               return;
             }
             setAlertRules(rules);
+            const groups = Array.isArray(parsed?.groups) ? parsed.groups : [];
+            setAlertRuleGroups(groups);
           } catch (err) {
             console.error("[AlertRules] Import parse error:", err);
             window.alert("Failed to parse script file. See console for details.");
@@ -940,7 +947,7 @@ function LiveTradeChartSection({
         }
       }
     },
-    [setAlertRules]
+    [setAlertRules, setAlertRuleGroups]
   );
 
   useEffect(() => {
@@ -1156,6 +1163,30 @@ function LiveTradeChartSection({
               <span className="font-semibold text-violet-200">Interval</span> and{" "}
               <span className="font-semibold text-violet-200">Candle row</span> (current / prev / prior).
             </p>
+            {/* Master blink color */}
+            <div className="mb-4 p-3 rounded-xl bg-[#181818] border border-violet-700/60 flex flex-wrap items-center gap-3">
+              <span className="text-xs font-semibold text-violet-200">Master blink color</span>
+              <div className="flex items-center gap-2">
+                <input
+                  type="color"
+                  value={masterBlinkColor || "#f97316"}
+                  onChange={(e) => setMasterBlinkColor(e.target.value)}
+                  className="w-10 h-8 rounded border border-gray-600 cursor-pointer bg-[#111]"
+                  title="Color for all blinking cells (unless overridden by group or rule)"
+                />
+                <input
+                  type="text"
+                  value={masterBlinkColor || "#f97316"}
+                  onChange={(e) => {
+                    const v = e.target.value.trim();
+                    if (/^#[0-9A-Fa-f]{6}$/.test(v) || v === "") setMasterBlinkColor(v || "#f97316");
+                  }}
+                  className="w-24 bg-[#111] border border-gray-700 rounded px-2 py-1 text-[11px] font-mono"
+                  placeholder="#f97316"
+                />
+              </div>
+              <span className="text-[11px] text-gray-400">Default color for all alert cells. Groups and rules can override.</span>
+            </div>
             {/* Bulk creator: select many signals / intervals / rows at once */}
             <div className="mb-4 p-3 rounded-xl bg-[#181818] border border-violet-700/60 space-y-3">
               <div className="flex items-center justify-between gap-3">
@@ -1163,13 +1194,33 @@ function LiveTradeChartSection({
                   <span className="text-xs font-semibold text-violet-200">
                     Bulk create rules (multi-select)
                   </span>
-                  <input
-                    type="text"
-                    placeholder="Group name (optional)"
-                    className="mt-0.5 bg-[#111] border border-gray-700 rounded px-2 py-1 text-[11px] w-56"
-                    value={bulkGroupName}
-                    onChange={(e) => setBulkGroupName(e.target.value)}
-                  />
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <input
+                      type="text"
+                      placeholder="Group name (optional)"
+                      className="bg-[#111] border border-gray-700 rounded px-2 py-1 text-[11px] w-56"
+                      value={bulkGroupName}
+                      onChange={(e) => setBulkGroupName(e.target.value)}
+                    />
+                    <span className="text-[10px] text-gray-400 whitespace-nowrap">Group color:</span>
+                    <input
+                      type="color"
+                      value={bulkGroupColor || "#f97316"}
+                      onChange={(e) => setBulkGroupColor(e.target.value)}
+                      className="w-8 h-7 rounded border border-gray-600 cursor-pointer bg-[#111]"
+                      title="Blink color for this group"
+                    />
+                    <input
+                      type="text"
+                      value={bulkGroupColor || ""}
+                      onChange={(e) => {
+                        const v = e.target.value.trim();
+                        if (/^#[0-9A-Fa-f]{6}$/.test(v) || v === "") setBulkGroupColor(v);
+                      }}
+                      className="w-20 bg-[#111] border border-gray-700 rounded px-1 py-0.5 text-[10px] font-mono"
+                      placeholder="optional"
+                    />
+                  </div>
                 </div>
                 <div className="flex items-center gap-2">
                   {editingGroupId && (
@@ -1538,6 +1589,7 @@ function LiveTradeChartSection({
                         ? bulkGroupName.trim()
                         : `Group ${alertRuleGroups.length + (editingGroupId ? 0 : 1)}`;
 
+                    const groupColor = (bulkGroupColor && /^#[0-9A-Fa-f]{6}$/.test(bulkGroupColor)) ? bulkGroupColor : null;
                     if (editingGroupId) {
                       // Replace existing group's rules
                       setAlertRules((prev) => [
@@ -1550,6 +1602,7 @@ function LiveTradeChartSection({
                             ? {
                                 ...g,
                                 name: groupName,
+                                color: groupColor,
                                 type: bulkType,
                                 signalKeys: [...bulkSignalKeys],
                                 intervals: [...bulkIntervals],
@@ -1571,6 +1624,7 @@ function LiveTradeChartSection({
                         {
                           id: groupId,
                           name: groupName,
+                          color: groupColor,
                           type: bulkType,
                           signalKeys: [...bulkSignalKeys],
                           intervals: [...bulkIntervals],
@@ -1606,6 +1660,9 @@ function LiveTradeChartSection({
                       (g.signalKeys?.length || 0) *
                       (g.intervals?.length || 0) *
                       (g.rows?.length || 0);
+                    const groupRules = (alertRules || []).filter((r) => r.groupId === g.id);
+                    const groupColor = (g.color && /^#[0-9A-Fa-f]{6}$/.test(g.color)) ? g.color : null;
+                    const hasRuleColorOverrides = groupRules.some((r) => r.color != null && r.color !== groupColor);
                     return (
                       <div
                         key={g.id}
@@ -1626,12 +1683,41 @@ function LiveTradeChartSection({
                           </span>
                         </div>
                         <div className="flex items-center gap-2">
+                          <span className="text-[10px] text-gray-400">Color:</span>
+                          <input
+                            type="color"
+                            value={groupColor || "#f97316"}
+                            onChange={(e) => {
+                              const c = e.target.value;
+                              setAlertRuleGroups((prev) =>
+                                prev.map((x) => (x.id === g.id ? { ...x, color: c } : x))
+                              );
+                            }}
+                            className="w-7 h-6 rounded border border-gray-600 cursor-pointer bg-[#111]"
+                            title="Group blink color"
+                          />
+                          <button
+                            type="button"
+                            title={hasRuleColorOverrides ? "Reset all rules in this group to use group color" : "No overrides to reset"}
+                            disabled={!hasRuleColorOverrides}
+                            onClick={() => {
+                              setAlertRules((prev) =>
+                                prev.map((r) =>
+                                  r.groupId === g.id ? { ...r, color: undefined } : r
+                                )
+                              );
+                            }}
+                            className="px-2 py-0.5 rounded bg-amber-700 hover:bg-amber-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-[11px]"
+                          >
+                            Reset color
+                          </button>
                           <button
                             type="button"
                             className="px-2 py-0.5 rounded bg-emerald-700 hover:bg-emerald-600 text-white"
                             onClick={() => {
                               setEditingGroupId(g.id);
                               setBulkGroupName(g.name || "");
+                              setBulkGroupColor(g.color || "");
                               setBulkType(g.type || "number");
                               setBulkSignalKeys(g.signalKeys || []);
                               setBulkIntervals(g.intervals || []);
@@ -1737,7 +1823,7 @@ function LiveTradeChartSection({
               {sortedAlertRules.map((rule, idx) => (
                 <div
                   key={rule.id || idx}
-                  className="grid grid-cols-1 sm:grid-cols-7 gap-2 items-center bg-[#181818] border border-gray-700 rounded-xl p-2 sm:p-3"
+                  className="grid grid-cols-1 sm:grid-cols-8 gap-2 items-center bg-[#181818] border border-gray-700 rounded-xl p-2 sm:p-3"
                 >
                   <div className="flex flex-col gap-1">
                     <span className="text-[10px] uppercase tracking-wide text-gray-400">Signal</span>
@@ -1747,7 +1833,7 @@ function LiveTradeChartSection({
                       onChange={(e) =>
                         setAlertRules((prev) =>
                           prev.map((r, i) =>
-                            i === idx ? { ...r, signalKey: e.target.value } : r
+                            r.id === rule.id ? { ...r, signalKey: e.target.value } : r
                           )
                         )
                       }
@@ -1767,7 +1853,7 @@ function LiveTradeChartSection({
                       onChange={(e) =>
                         setAlertRules((prev) =>
                           prev.map((r, i) =>
-                            i === idx ? { ...r, interval: e.target.value } : r
+                            r.id === rule.id ? { ...r, interval: e.target.value } : r
                           )
                         )
                       }
@@ -1787,7 +1873,7 @@ function LiveTradeChartSection({
                       onChange={(e) =>
                         setAlertRules((prev) =>
                           prev.map((r, i) =>
-                            i === idx ? { ...r, rowLabel: e.target.value } : r
+                            r.id === rule.id ? { ...r, rowLabel: e.target.value } : r
                           )
                         )
                       }
@@ -1807,7 +1893,7 @@ function LiveTradeChartSection({
                       onChange={(e) =>
                         setAlertRules((prev) =>
                           prev.map((r, i) =>
-                            i === idx ? { ...r, type: e.target.value } : r
+                            r.id === rule.id ? { ...r, type: e.target.value } : r
                           )
                         )
                       }
@@ -1834,7 +1920,7 @@ function LiveTradeChartSection({
                           onChange={(e) =>
                             setAlertRules((prev) =>
                               prev.map((r, i) =>
-                                i === idx ? { ...r, boolValue: e.target.value === "true" } : r
+                                r.id === rule.id ? { ...r, boolValue: e.target.value === "true" } : r
                               )
                             )
                           }
@@ -1850,7 +1936,7 @@ function LiveTradeChartSection({
                         <button
                           type="button"
                           onClick={() =>
-                            setAlertRules((prev) => prev.filter((_, i) => i !== idx))
+                            setAlertRules((prev) => prev.filter((r) => r.id !== rule.id))
                           }
                           className="mt-1 px-2 py-1 rounded bg-red-700 hover:bg-red-600 text-xs"
                         >
@@ -1869,8 +1955,8 @@ function LiveTradeChartSection({
                           value={rule.operator || "eq"}
                           onChange={(e) =>
                             setAlertRules((prev) =>
-                              prev.map((r, i) =>
-                                i === idx ? { ...r, operator: e.target.value } : r
+                              prev.map((r) =>
+                                r.id === rule.id ? { ...r, operator: e.target.value } : r
                               )
                             )
                           }
@@ -1894,7 +1980,7 @@ function LiveTradeChartSection({
                           onChange={(e) =>
                             setAlertRules((prev) =>
                               prev.map((r, i) =>
-                                i === idx ? { ...r, stringValue: e.target.value } : r
+                                r.id === rule.id ? { ...r, stringValue: e.target.value } : r
                               )
                             )
                           }
@@ -1907,7 +1993,7 @@ function LiveTradeChartSection({
                         <button
                           type="button"
                           onClick={() =>
-                            setAlertRules((prev) => prev.filter((_, i) => i !== idx))
+                            setAlertRules((prev) => prev.filter((r) => r.id !== rule.id))
                           }
                           className="mt-1 px-2 py-1 rounded bg-red-700 hover:bg-red-600 text-xs"
                         >
@@ -1927,7 +2013,7 @@ function LiveTradeChartSection({
                           onChange={(e) =>
                             setAlertRules((prev) =>
                               prev.map((r, i) =>
-                                i === idx ? { ...r, enumValue: e.target.value } : r
+                                r.id === rule.id ? { ...r, enumValue: e.target.value } : r
                               )
                             )
                           }
@@ -1944,7 +2030,7 @@ function LiveTradeChartSection({
                         <button
                           type="button"
                           onClick={() =>
-                            setAlertRules((prev) => prev.filter((_, i) => i !== idx))
+                            setAlertRules((prev) => prev.filter((r) => r.id !== rule.id))
                           }
                           className="mt-1 px-2 py-1 rounded bg-red-700 hover:bg-red-600 text-xs"
                         >
@@ -1964,7 +2050,7 @@ function LiveTradeChartSection({
                           onChange={(e) =>
                             setAlertRules((prev) =>
                               prev.map((r, i) =>
-                                i === idx ? { ...r, enumValue: e.target.value } : r
+                                r.id === rule.id ? { ...r, enumValue: e.target.value } : r
                               )
                             )
                           }
@@ -1981,7 +2067,7 @@ function LiveTradeChartSection({
                         <button
                           type="button"
                           onClick={() =>
-                            setAlertRules((prev) => prev.filter((_, i) => i !== idx))
+                            setAlertRules((prev) => prev.filter((r) => r.id !== rule.id))
                           }
                           className="mt-1 px-2 py-1 rounded bg-red-700 hover:bg-red-600 text-xs"
                         >
@@ -2001,7 +2087,7 @@ function LiveTradeChartSection({
                           onChange={(e) =>
                             setAlertRules((prev) =>
                               prev.map((r, i) =>
-                                i === idx ? { ...r, enumValue: e.target.value } : r
+                                r.id === rule.id ? { ...r, enumValue: e.target.value } : r
                               )
                             )
                           }
@@ -2018,7 +2104,7 @@ function LiveTradeChartSection({
                         <button
                           type="button"
                           onClick={() =>
-                            setAlertRules((prev) => prev.filter((_, i) => i !== idx))
+                            setAlertRules((prev) => prev.filter((r) => r.id !== rule.id))
                           }
                           className="mt-1 px-2 py-1 rounded bg-red-700 hover:bg-red-600 text-xs"
                         >
@@ -2038,7 +2124,7 @@ function LiveTradeChartSection({
                           onChange={(e) =>
                             setAlertRules((prev) =>
                               prev.map((r, i) =>
-                                i === idx ? { ...r, enumValue: e.target.value } : r
+                                r.id === rule.id ? { ...r, enumValue: e.target.value } : r
                               )
                             )
                           }
@@ -2055,7 +2141,7 @@ function LiveTradeChartSection({
                         <button
                           type="button"
                           onClick={() =>
-                            setAlertRules((prev) => prev.filter((_, i) => i !== idx))
+                            setAlertRules((prev) => prev.filter((r) => r.id !== rule.id))
                           }
                           className="mt-1 px-2 py-1 rounded bg-red-700 hover:bg-red-600 text-xs"
                         >
@@ -2075,7 +2161,7 @@ function LiveTradeChartSection({
                           onChange={(e) =>
                             setAlertRules((prev) =>
                               prev.map((r, i) =>
-                                i === idx ? { ...r, enumValue: e.target.value } : r
+                                r.id === rule.id ? { ...r, enumValue: e.target.value } : r
                               )
                             )
                           }
@@ -2092,7 +2178,7 @@ function LiveTradeChartSection({
                         <button
                           type="button"
                           onClick={() =>
-                            setAlertRules((prev) => prev.filter((_, i) => i !== idx))
+                            setAlertRules((prev) => prev.filter((r) => r.id !== rule.id))
                           }
                           className="mt-1 px-2 py-1 rounded bg-red-700 hover:bg-red-600 text-xs"
                         >
@@ -2111,8 +2197,8 @@ function LiveTradeChartSection({
                           value={rule.operator || ">="}
                           onChange={(e) =>
                             setAlertRules((prev) =>
-                              prev.map((r, i) =>
-                                i === idx ? { ...r, operator: e.target.value } : r
+                              prev.map((r) =>
+                                r.id === rule.id ? { ...r, operator: e.target.value } : r
                               )
                             )
                           }
@@ -2136,7 +2222,7 @@ function LiveTradeChartSection({
                           onChange={(e) =>
                             setAlertRules((prev) =>
                               prev.map((r, i) =>
-                                i === idx ? { ...r, threshold: e.target.value } : r
+                                r.id === rule.id ? { ...r, threshold: e.target.value } : r
                               )
                             )
                           }
@@ -2149,7 +2235,7 @@ function LiveTradeChartSection({
                         <button
                           type="button"
                           onClick={() =>
-                            setAlertRules((prev) => prev.filter((_, i) => i !== idx))
+                            setAlertRules((prev) => prev.filter((r) => r.id !== rule.id))
                           }
                           className="mt-1 px-2 py-1 rounded bg-red-700 hover:bg-red-600 text-xs"
                         >
@@ -2158,6 +2244,38 @@ function LiveTradeChartSection({
                       </div>
                     </>
                   )}
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[10px] uppercase tracking-wide text-gray-400">Color</span>
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="color"
+                        value={(rule.color && /^#[0-9A-Fa-f]{6}$/.test(rule.color) ? rule.color : null) || (alertRuleGroups?.find((g) => g.id === rule.groupId)?.color) || masterBlinkColor || "#f97316"}
+                        onChange={(e) =>
+                          setAlertRules((prev) =>
+                            prev.map((r, i) =>
+                              r.id === rule.id ? { ...r, color: e.target.value } : r
+                            )
+                          )
+                        }
+                        className="w-7 h-6 rounded border border-gray-600 cursor-pointer bg-[#111]"
+                        title="Rule blink color (overrides group/master)"
+                      />
+                      {(rule.color && /^#[0-9A-Fa-f]{6}$/.test(rule.color)) && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setAlertRules((prev) =>
+                              prev.map((r) => (r.id === rule.id ? { ...r, color: undefined } : r))
+                            )
+                          }
+                          className="text-[10px] text-gray-400 hover:text-white"
+                          title="Use group/master color"
+                        >
+                          Reset
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 </div>
               ))}
             </div>
@@ -2510,6 +2628,13 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
     } catch {}
     return [];
   });
+  const [masterBlinkColor, setMasterBlinkColor] = useState(() => {
+    try {
+      const v = localStorage.getItem(MASTER_BLINK_COLOR_KEY);
+      return v && /^#[0-9A-Fa-f]{6}$/.test(v) ? v : "#f97316";
+    } catch {}
+    return "#f97316";
+  });
   const importInputRef = useRef(null);
 
   useEffect(() => {
@@ -2541,15 +2666,23 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
       localStorage.setItem(ALERT_RULE_GROUPS_KEY, JSON.stringify(alertRuleGroups));
     } catch {}
   }, [alertRuleGroups]);
+  useEffect(() => {
+    try {
+      if (masterBlinkColor && /^#[0-9A-Fa-f]{6}$/.test(masterBlinkColor)) {
+        localStorage.setItem(MASTER_BLINK_COLOR_KEY, masterBlinkColor);
+      }
+    } catch {}
+  }, [masterBlinkColor]);
 
   const handleExportAlertRules = useCallback(() => {
     if (typeof window === "undefined" || !window.document) return;
     try {
       const payload = {
         type: "lab_single_trade_alert_rules",
-        version: 1,
+        version: 2,
         createdAt: new Date().toISOString(),
         rules: alertRules || [],
+        groups: alertRuleGroups || [],
       };
       const json = JSON.stringify(payload, null, 2);
       const blob = new Blob([json], { type: "application/json" });
@@ -2568,7 +2701,7 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
         window.alert("Failed to export rules. See console for details.");
       }
     }
-  }, [alertRules]);
+  }, [alertRules, alertRuleGroups]);
 
   const handleImportAlertRulesClick = useCallback(() => {
     if (importInputRef.current) {
@@ -2596,6 +2729,8 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
             return;
           }
           setAlertRules(rules);
+          const groups = Array.isArray(parsed?.groups) ? parsed.groups : [];
+          setAlertRuleGroups(groups);
         } catch (err) {
           console.error("[AlertRules] Import parse error:", err);
           window.alert("Failed to parse script file. See console for details.");
@@ -2958,22 +3093,39 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
                                 const v = rows[col.rowIdx]?.[key];
                                 const str = v != null ? (typeof v === "number" ? (Number.isInteger(v) ? String(v) : v.toFixed?.(4) ?? String(v)) : String(v)) : "—";
                                 const cellBg = getGroupColor(col.groupIndex);
-                                const hasAlert = (() => {
-                                  if (!alertRules || !alertRules.length) return false;
-                                  const matching = alertRules.filter((rule) =>
+                                const matchingRules = (() => {
+                                  if (!alertRules || !alertRules.length) return [];
+                                  return alertRules.filter((rule) =>
                                     rule &&
                                     rule.signalKey === key &&
                                     rule.interval === col.iv &&
                                     rule.rowLabel === col.label
                                   );
-                                  if (!matching.length) return false;
-                                  return matching.some((rule) => matchesRuleValue(rule, v));
                                 })();
+                                const hasAlert = matchingRules.some((rule) => matchesRuleValue(rule, v));
+                                const firstMatching = hasAlert ? matchingRules.find((rule) => matchesRuleValue(rule, v)) : null;
+                                const groupForRule = firstMatching?.groupId && alertRuleGroups ? alertRuleGroups.find((g) => g.id === firstMatching.groupId) : null;
+                                const effectiveColor = (firstMatching?.color && /^#[0-9A-Fa-f]{6}$/.test(firstMatching.color))
+                                  ? firstMatching.color
+                                  : (groupForRule?.color && /^#[0-9A-Fa-f]{6}$/.test(groupForRule.color))
+                                    ? groupForRule.color
+                                    : (masterBlinkColor && /^#[0-9A-Fa-f]{6}$/.test(masterBlinkColor)) ? masterBlinkColor : "#f97316";
+                                const hexToRgba = (hex, a) => {
+                                  const n = parseInt(hex.slice(1), 16);
+                                  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+                                  return `rgba(${r},${g},${b},${a})`;
+                                };
+                                const alertStyle = hasAlert ? {
+                                  "--lab-alert-bg": effectiveColor,
+                                  "--lab-alert-bg-peak": effectiveColor,
+                                  "--lab-alert-shadow": hexToRgba(effectiveColor, 0.9),
+                                } : undefined;
                                 const alertClasses = hasAlert ? "lab-alert-cell" : "";
                                 return (
                                   <td
                                     key={`${col.iv}-${col.label}-${idx}`}
                                     className={`border border-gray-200 dark:border-gray-600 px-0.5 py-0.5 text-center text-gray-800 dark:text-white truncate max-w-[60px] ${cellBg} ${alertClasses}`}
+                                    style={alertStyle}
                                     title={str}
                                   >
                                     {str}
@@ -3276,6 +3428,8 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
               setAlertRules={setAlertRules}
               alertRuleGroups={alertRuleGroups}
               setAlertRuleGroups={setAlertRuleGroups}
+              masterBlinkColor={masterBlinkColor}
+              setMasterBlinkColor={setMasterBlinkColor}
               showAlertSettings={showAlertSettings}
               setShowAlertSettings={setShowAlertSettings}
             />
