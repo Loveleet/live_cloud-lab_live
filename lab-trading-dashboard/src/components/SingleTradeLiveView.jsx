@@ -82,6 +82,8 @@ const SIGNAL_ALERT_RULES_KEY = "singleTradeLiveView_signalAlertRules";
 const ALERT_RULE_GROUPS_KEY = "singleTradeLiveView_alertRuleGroups";
 const MASTER_BLINK_COLOR_KEY = "singleTradeLiveView_masterBlinkColor";
 const ACTIVE_RULE_BOOK_ID_KEY = "singleTradeLiveView_activeRuleBookId";
+const BINANCE_COLUMNS_ORDER_KEY = "singleTradeLiveView_binanceColumnsOrder";
+const BINANCE_COLUMNS_VISIBILITY_KEY = "singleTradeLiveView_binanceColumnsVisibility";
 const SECTION_IDS = ["information", "binanceData", "chart"];
 const SECTION_LABELS = { information: "Information", binanceData: "Binance Data", chart: "Chart" };
 
@@ -2669,16 +2671,37 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
   const [exchangePositionData, setExchangePositionData] = useState(null);
 
   // --- Binance Data table settings: column order + visibility (+ actions column) ---
-  const [binanceColumns, setBinanceColumns] = useState([]);
-  const [binanceColumnVisibility, setBinanceColumnVisibility] = useState({});
+  const [binanceColumns, setBinanceColumns] = useState(() => {
+    try {
+      const v = localStorage.getItem(BINANCE_COLUMNS_ORDER_KEY);
+      if (v) {
+        const arr = JSON.parse(v);
+        if (Array.isArray(arr) && arr.length) return arr;
+      }
+    } catch {}
+    return [];
+  });
+  const [binanceColumnVisibility, setBinanceColumnVisibility] = useState(() => {
+    try {
+      const v = localStorage.getItem(BINANCE_COLUMNS_VISIBILITY_KEY);
+      if (v) {
+        const obj = JSON.parse(v);
+        if (obj && typeof obj === "object") return obj;
+      }
+    } catch {}
+    return {};
+  });
   const [binanceSettingsOpen, setBinanceSettingsOpen] = useState(false);
 
   useEffect(() => {
     if (exchangePositionData?.positions?.length) {
       const keys = Object.keys(exchangePositionData.positions[0]);
       setBinanceColumns((prev) => {
-        if (Array.isArray(prev) && prev.length > 0) return prev;
-        // Special first column for the per-row action buttons
+        if (Array.isArray(prev) && prev.length > 0) {
+          const ordered = prev.filter((c) => c === "__actions__" || keys.includes(c));
+          const added = keys.filter((k) => !ordered.includes(k));
+          return ["__actions__", ...ordered.filter((x) => x !== "__actions__"), ...added];
+        }
         return ["__actions__", ...keys];
       });
       setBinanceColumnVisibility((prev) => {
@@ -2848,6 +2871,12 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
     if (serverUiSettings[SIGNALS_VIEW_MODE_KEY] === "rowWise" || serverUiSettings[SIGNALS_VIEW_MODE_KEY] === "intervalWise") {
       setSignalsTableViewMode(serverUiSettings[SIGNALS_VIEW_MODE_KEY]);
     }
+    if (Array.isArray(serverUiSettings[BINANCE_COLUMNS_ORDER_KEY]) && serverUiSettings[BINANCE_COLUMNS_ORDER_KEY].length) {
+      setBinanceColumns(serverUiSettings[BINANCE_COLUMNS_ORDER_KEY]);
+    }
+    if (serverUiSettings[BINANCE_COLUMNS_VISIBILITY_KEY] && typeof serverUiSettings[BINANCE_COLUMNS_VISIBILITY_KEY] === "object") {
+      setBinanceColumnVisibility(serverUiSettings[BINANCE_COLUMNS_VISIBILITY_KEY]);
+    }
   }, [serverUiSettings]);
 
   // backSplitPercent is no longer used (Binance Data is a single panel now), so we stop updating it.
@@ -2923,6 +2952,22 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
     } catch {}
     saveUiSetting(SECTION_ORDER_KEY, sectionOrder);
   }, [sectionOrder, saveUiSetting]);
+  useEffect(() => {
+    if (binanceColumns.length > 0) {
+      try {
+        localStorage.setItem(BINANCE_COLUMNS_ORDER_KEY, JSON.stringify(binanceColumns));
+      } catch {}
+      saveUiSetting(BINANCE_COLUMNS_ORDER_KEY, binanceColumns);
+    }
+  }, [binanceColumns, saveUiSetting]);
+  useEffect(() => {
+    if (Object.keys(binanceColumnVisibility).length > 0) {
+      try {
+        localStorage.setItem(BINANCE_COLUMNS_VISIBILITY_KEY, JSON.stringify(binanceColumnVisibility));
+      } catch {}
+      saveUiSetting(BINANCE_COLUMNS_VISIBILITY_KEY, binanceColumnVisibility);
+    }
+  }, [binanceColumnVisibility, saveUiSetting]);
   useEffect(() => {
     try {
       localStorage.setItem(SIGNAL_ALERT_RULES_KEY, JSON.stringify(alertRules));
