@@ -46,8 +46,9 @@ jobs:
         run: |
           node -e "
           const fs = require('fs');
-          const url = process.env.API_BASE_URL || '';
-          fs.writeFileSync('dist/api-config.json', JSON.stringify({ apiBaseUrl: url }));
+          const url = (process.env.API_BASE_URL || 'http://150.241.244.130:10000').replace(/\/$/, '');
+          fs.writeFileSync('dist/api-config.json', JSON.stringify({ apiBaseUrl: url, tunnelUrl: url }));
+          console.log('Wrote api-config.json with apiBaseUrl:', url);
           "
         env:
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
