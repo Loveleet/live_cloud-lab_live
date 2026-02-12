@@ -23,7 +23,7 @@ import RefreshControls from './components/RefreshControls';
 import SuperTrendPanel from "./SuperTrendPanel";
 import TradeComparePage from "./components/TradeComparePage";
 import SoundSettings from "./components/SoundSettings";
-import { API_BASE_URL, getApiBaseUrl, api, apiFetch, loadRuntimeApiConfig } from "./config";
+import { API_BASE_URL, getApiBaseUrl, api, apiFetch, loadRuntimeApiConfig, isLocalhostOrigin, getLocalhostUseCloudFallback } from "./config";
 
 // Animated SVG background for LAB title
 function AnimatedGraphBackground({ width = 400, height = 80, opacity = 0.4 }) {
