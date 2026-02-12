@@ -62,25 +62,9 @@ Use your email, agree to terms, choose **Yes** to redirect HTTP→HTTPS.
 
 ---
 
-## 3. Allow your domain in CORS (on the cloud)
+## 3. CORS
 
-Edit the secrets file:
-
-```bash
-sudo nano /etc/lab-trading-dashboard.secrets.env
-```
-
-Add (use your real domain):
-
-```env
-ALLOWED_ORIGINS=https://api.yourdomain.com
-```
-
-Save. Restart the app:
-
-```bash
-sudo systemctl restart lab-trading-dashboard
-```
+The server already allows **https://loveleet.github.io**. No change needed for GitHub Pages. (If you later serve the app at your own domain too, add that origin in secrets: `ALLOWED_ORIGINS=https://yourdomain.com`.)
 
 ---
 
@@ -104,7 +88,7 @@ Open **https://loveleet.github.io/lab_live/** and hard refresh (Ctrl+Shift+R). L
 |------|------|
 | 1 | Domain A record → `150.241.244.130` |
 | 2 | On cloud: nginx + certbot → API at `https://api.yourdomain.com` |
-| 3 | On cloud: `ALLOWED_ORIGINS=https://api.yourdomain.com` in secrets, restart app |
+| 3 | CORS: already allows GitHub Pages (no change needed) |
 | 4 | GitHub: API_BASE_URL = `https://api.yourdomain.com`, run Deploy workflow |
 | 5 | Use https://loveleet.github.io/lab_live/ |
 
