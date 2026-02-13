@@ -127,7 +127,7 @@ sudo systemctl reload nginx
 sudo certbot --nginx -d clubinfotech.com -d www.clubinfotech.com
 ```
 
-When certbot asks to redirect HTTP→HTTPS, choose **Yes**. After that, **https://clubinfotech.com** will also redirect to GitHub Pages (certbot adds HTTPS to the same block; the 301 redirect will send users to loveleet.github.io/lab_live/).
+When certbot asks to redirect HTTP→HTTPS, choose **Yes**. If after certbot you see that **https://clubinfotech.com** shows an nginx page instead of redirecting, edit the HTTPS server block for clubinfotech.com and replace the `location /` (or root) part with: `return 301 https://loveleet.github.io/lab_live$request_uri;`
 
 ### 3. Test
 
