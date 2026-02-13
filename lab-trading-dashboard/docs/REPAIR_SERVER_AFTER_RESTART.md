@@ -6,12 +6,26 @@ If you restarted the server (or the machine) and **api.clubinfotech.com** or **/
 
 ---
 
-## 1. Transfer files (from your laptop)
+## 0. Transfer server.js (whenever you change it — not in Git)
+
+**server.js is gitignored.** After any local change to `server/server.js`, copy it to the cloud and restart Node:
+
+```bash
+cd "/Volumes/Loveleet /Work/Binance/LAB_LIVE_NEW/lab_live/lab-trading-dashboard"
+scp server/server.js root@150.241.244.130:/root/lab-trading-dashboard/server/
+ssh root@150.241.244.130 "sudo systemctl restart lab-trading-dashboard"
+```
+
+See **[docs/TRANSFER_SERVER_JS_TO_CLOUD.md](TRANSFER_SERVER_JS_TO_CLOUD.md)** for the full reference.
+
+---
+
+## 1. Transfer scripts (from your laptop)
 
 Run from the **lab-trading-dashboard** folder on your machine:
 
 ```bash
-cd /Volumes/Loveleet\ /Work/Binance/LAB_LIVE_NEW/lab_live/lab-trading-dashboard
+cd "/Volumes/Loveleet /Work/Binance/LAB_LIVE_NEW/lab_live/lab-trading-dashboard"
 
 scp scripts/lab-trading-dashboard.service scripts/api-signals.service scripts/enable-services-on-boot.sh scripts/repair-and-start-server.sh scripts/check-python-signals-on-cloud.sh root@150.241.244.130:/root/lab-trading-dashboard/scripts/
 ```
