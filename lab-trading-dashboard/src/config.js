@@ -52,11 +52,11 @@ function getBuildTimeDefault() {
   return CLOUD_API;
 }
 
-/** When true, we are on the cloud server — always use same-origin API */
+/** When true, we are on the cloud server or clubinfotech.com — always use same-origin API */
 function isCloudServerOrigin() {
   if (typeof window === "undefined") return false;
-  const h = window.location?.hostname || "";
-  return h === "150.241.244.130";
+  const h = (window.location?.hostname || "").toLowerCase();
+  return h === "150.241.244.130" || h === "clubinfotech.com" || h === "www.clubinfotech.com";
 }
 
 /** Ensure API base has a protocol so fetch() uses it as absolute URL, not relative to GitHub Pages. */
