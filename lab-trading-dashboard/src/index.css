@@ -2,6 +2,31 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Login page: animated background */
+@keyframes login-gradient-shift {
+  0%, 100% { opacity: 1; transform: scale(1) translate(0, 0) rotate(0deg); }
+  33% { opacity: 0.9; transform: scale(1.15) translate(3%, -2%) rotate(2deg); }
+  66% { opacity: 0.95; transform: scale(1.08) translate(-2%, 3%) rotate(-1deg); }
+}
+@keyframes login-float {
+  0%, 100% { transform: translate(0, 0); }
+  25% { transform: translate(20px, -15px); }
+  50% { transform: translate(-15px, 10px); }
+  75% { transform: translate(10px, 15px); }
+}
+@keyframes login-float-slow {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(-25px, -20px); }
+}
+@keyframes login-grid-flow {
+  0% { background-position: 0 0; }
+  100% { background-position: 48px 48px; }
+}
+@keyframes login-shine {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
 /* Global custom styles */
 @layer base {
   /* High‑visibility blinking for signal cells. No scale() to avoid scrollbar resize. Colors via --lab-alert-bg / --lab-alert-shadow. */

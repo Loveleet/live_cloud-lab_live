@@ -98,7 +98,7 @@ Once this is done, you use **only** GitHub Pages; the API is reached over HTTPS 
 
 ## Optional: clubinfotech.com redirects to GitHub Pages
 
-So that visiting **clubinfotech.com** or **www.clubinfotech.com** (HTTP or HTTPS) redirects to **https://loveleet.github.io/lab_live/**:
+So that typing **clubinfotech.com** (or **www.clubinfotech.com**) sends users to the dashboard at **https://loveleet.github.io/lab_live/**:
 
 ### 1. DNS (at GoDaddy or your registrar)
 
@@ -107,9 +107,9 @@ So that visiting **clubinfotech.com** or **www.clubinfotech.com** (HTTP or HTTPS
 
 Check: `ping clubinfotech.com` and `ping www.clubinfotech.com` → both show `150.241.244.130`.
 
-### 2. Nginx: add the main-domain redirect block
+### 2. Nginx on the cloud server
 
-On the cloud server, add a server block (or use the full `docs/nginx-lab-trading.conf`). The **main-domain block** must be:
+Add a server block that **redirects** to GitHub Pages (or use the full `docs/nginx-lab-trading.conf`):
 
 ```nginx
 server {
@@ -119,7 +119,7 @@ server {
 }
 ```
 
-### 3. Reload nginx, then run certbot
+Then:
 
 ```bash
 sudo nginx -t
@@ -127,25 +127,8 @@ sudo systemctl reload nginx
 sudo certbot --nginx -d clubinfotech.com -d www.clubinfotech.com
 ```
 
-When certbot asks to redirect HTTP→HTTPS, choose **Yes**.
+When certbot asks to redirect HTTP→HTTPS, choose **Yes**. If after certbot you see that **https://clubinfotech.com** shows an nginx page instead of redirecting, edit the HTTPS server block for clubinfotech.com and replace the `location /` (or root) part with: `return 301 https://loveleet.github.io/lab_live$request_uri;`
 
-### 4. If https://clubinfotech.com still shows an nginx page
-
-Certbot may add a separate HTTPS server block that serves content instead of redirecting. Edit the HTTPS server block for `clubinfotech.com` / `www.clubinfotech.com` and set the location to redirect:
-
-```nginx
-location / {
-    return 301 https://loveleet.github.io/lab_live$request_uri;
-}
-```
-
-Or replace the whole server block content (keeping the `listen 443 ssl` and `ssl_certificate` lines certbot added) with that `location`. Then:
-
-```bash
-sudo nginx -t
-sudo systemctl reload nginx
-```
-
-### 5. Test
+### 3. Test
 
 Open **http://clubinfotech.com** or **https://clubinfotech.com** — you should be redirected to **https://loveleet.github.io/lab_live/**.
