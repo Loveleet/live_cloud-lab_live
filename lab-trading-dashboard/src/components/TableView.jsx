@@ -1,4 +1,14 @@
 // TradingView interval mapping for chart grid view
+
+/** Full URL for live-trade-view (respects GitHub Pages base path e.g. /lab_live) */
+function liveTradeViewUrl(search = "") {
+  const base = (typeof import.meta !== "undefined" && import.meta.env?.BASE_URL)
+    ? String(import.meta.env.BASE_URL).replace(/\/$/, "")
+    : "";
+  const path = base ? `${base}/live-trade-view` : "/live-trade-view";
+  return `${window.location.origin}${path}${search ? `?${search}` : ""}`;
+}
+
 const intervalMap = {
   "1m": "1",
   "3m": "3",
@@ -1391,7 +1401,7 @@ return (
                                 rawTrade: raw,
                               }));
                             } catch (_) {}
-                            const url = `${window.location.origin}${(window.location.pathname || "/").replace(/\/?$/, "")}/live-trade-view?stateKey=${encodeURIComponent(stateKey)}`;
+                            const url = liveTradeViewUrl(`stateKey=${encodeURIComponent(stateKey)}`);
                             window.open(url, "_blank", "noopener,noreferrer");
                           }}
                           className="px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition-colors"
@@ -1517,7 +1527,7 @@ return (
                                 className="cursor-pointer font-bold text-yellow-400 hover:underline hover:text-yellow-300"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  window.open(`/live-trade-view?uid=${encodeURIComponent(val)}`, '_blank');
+                                  window.open(liveTradeViewUrl(`uid=${encodeURIComponent(val)}`), '_blank');
                                 }}
                                 title="Click to view live trade details"
                               >
@@ -1531,7 +1541,7 @@ return (
                             className="cursor-pointer font-bold text-yellow-400 hover:underline hover:text-yellow-300"
                             onClick={(e) => {
                               e.stopPropagation();
-                              window.open(`/live-trade-view?uid=${encodeURIComponent(val)}`, '_blank');
+                              window.open(liveTradeViewUrl(`uid=${encodeURIComponent(val)}`), '_blank');
                             }}
                             title="Click to view live trade details"
                           >

@@ -4,6 +4,15 @@ import { formatTradeData } from "./TableView";
 import { LogoutButton } from "../auth";
 import { apiFetch } from "../config";
 
+/** Full URL for live-trade-view (respects GitHub Pages base path e.g. /lab_live) */
+function liveTradeViewUrl(search = "") {
+  const base = (typeof import.meta !== "undefined" && import.meta.env?.BASE_URL)
+    ? String(import.meta.env.BASE_URL).replace(/\/$/, "")
+    : "";
+  const path = base ? `${base}/live-trade-view` : "/live-trade-view";
+  return `${window.location.origin}${path}${search ? `?${search}` : ""}`;
+}
+
 const DEMO_PASSWORD = "demo123";
 
 function stripHtml(str) {
@@ -116,7 +125,7 @@ export default function LiveRunningTradesPage() {
     try {
       localStorage.setItem(stateKey, JSON.stringify({ formattedRow, rawTrade }));
     } catch (_) {}
-    const url = `${window.location.origin}${(window.location.pathname || "/").replace(/\/?$/, "")}/live-trade-view?stateKey=${encodeURIComponent(stateKey)}`;
+    const url = liveTradeViewUrl(`stateKey=${encodeURIComponent(stateKey)}`);
     window.open(url, "_blank", "noopener,noreferrer");
   };
 

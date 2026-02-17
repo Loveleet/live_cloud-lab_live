@@ -884,6 +884,9 @@ const LiveTradeViewPage = () => {
   const botEventSummary = (
     <div className={`p-4 rounded-lg border ${darkMode ? 'bg-gray-800 border-gray-600 text-white' : 'bg-white border-gray-200 text-gray-800'}`}>
       <h3 className="text-lg font-semibold mb-2">Bot Event Log Summary</h3>
+      {logsLoading ? (
+        <div className="py-6 text-center text-base font-medium opacity-80">Loading logs...</div>
+      ) : (
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="text-center">
           <div className="text-2xl font-bold text-blue-500">{filteredBotEventLogs.length}</div>
@@ -908,6 +911,7 @@ const LiveTradeViewPage = () => {
           <div className="text-sm text-gray-500">Unique Machines</div>
         </div>
       </div>
+      )}
     </div>
   );
 
@@ -2683,13 +2687,6 @@ const LiveTradeViewPage = () => {
             </div>
           </div>
         </>
-      )}
-      {logsLoading && (
-        <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.25)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ background: darkMode ? '#23272f' : '#fff', color: darkMode ? '#fff' : '#222', padding: 32, borderRadius: 16, fontSize: 22, fontWeight: 600, boxShadow: '0 4px 32px rgba(0,0,0,0.18)' }}>
-            Loading logs...
-          </div>
-        </div>
       )}
       {/* Font size adjust buttons */}
       <div style={{ position: 'absolute', top: 24, right: 130, zIndex: 100, display: 'flex', gap: 4 }}>

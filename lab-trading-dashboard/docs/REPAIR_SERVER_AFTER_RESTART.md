@@ -90,6 +90,8 @@ This checks: (1) api-signals service running, (2) Python responding on port 5001
 
 After that, the Information and Binance Data sections should load (Node proxies `/api/calculate-signals` and `/api/open-position` to api_signals.py on port 5001).
 
+**If the browser shows 404 for `/api/calculate-signals`:** the cloud is likely running an **old server.js** that doesn’t have the proxy route. Re-copy server.js and restart Node (see Section 0 above). Then open `https://api.clubinfotech.com/api/calculate-signals/health` in the browser: if you get `{"ok":true,"service":"calculate-signals"}`, the proxy is correct; if you get 502, Python (api_signals) is not running — start it with `sudo systemctl start api-signals`.
+
 ---
 
 ## Make it run on every reboot and crash (do this once)

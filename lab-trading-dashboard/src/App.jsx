@@ -16,7 +16,8 @@ import ListViewPage from './components/ListViewPage';
 import LiveTradeViewPage from './components/LiveTradeViewPage';
 import LiveRunningTradesPage from './components/LiveRunningTradesPage';
 import LoginPage from './components/LoginPage';
-import { checkSession, logoutApi, AuthContext, LogoutButton } from './auth';
+import { checkSession, logoutApi, extendSession, AuthContext } from './auth';
+import { ThemeProfileProvider, ProfilePanel } from './ThemeProfileContext';
 
 import GroupViewPage from './pages/GroupViewPage';
 import RefreshControls from './components/RefreshControls';
@@ -114,12 +115,16 @@ const parseBoolean = (value) => {
 };
 
 const SESSION_CHECK_INTERVAL_MS = 30 * 1000; // check every 30 seconds
+const STAY_LOGGED_IN_PROMPT_AFTER_MS = 60 * 60 * 1000; // show "Stay logged in?" after 1 hour
 
 const App = () => {
   const [isLoggedIn, setLoggedIn] = useState(false);
   const [user, setUser] = useState(null);
   const [authChecking, setAuthChecking] = useState(true);
   const [showSessionWarning, setShowSessionWarning] = useState(false);
+  const [showStayLoggedInPrompt, setShowStayLoggedInPrompt] = useState(false);
+  const loggedInAtRef = useRef(0);
+  const themeProfileRef = useRef(null);
 
   const [superTrendData, setSuperTrendData] = useState([]);
   const [emaTrends, setEmaTrends] = useState(null);
@@ -185,6 +190,7 @@ const App = () => {
   useEffect(() => {
     checkSession().then((data) => {
       setLoggedIn(!!data);
+      if (data) loggedInAtRef.current = Date.now();
       setUser(data?.user ?? null);
       setAuthChecking(false);
     }).catch(() => {
@@ -194,7 +200,12 @@ const App = () => {
     });
   }, []);
 
-  // Periodically verify session is still valid
+  // When user logs in (e.g. from LoginPage), set timer for "Stay logged in?" prompt
+  useEffect(() => {
+    if (isLoggedIn && loggedInAtRef.current === 0) loggedInAtRef.current = Date.now();
+  }, [isLoggedIn]);
+
+  // Periodically verify session and show "Stay logged in?" after 1 hour
   useEffect(() => {
     if (!isLoggedIn) return;
     const id = setInterval(() => {
@@ -203,8 +214,13 @@ const App = () => {
           setLoggedIn(false);
           setUser(null);
           setShowSessionWarning(false);
-        } else {
-          setUser(data.user ?? null);
+          setShowStayLoggedInPrompt(false);
+          return;
+        }
+        setUser(data.user ?? null);
+        const elapsed = Date.now() - loggedInAtRef.current;
+        if (elapsed >= STAY_LOGGED_IN_PROMPT_AFTER_MS) {
+          setShowStayLoggedInPrompt(true);
         }
       });
     }, SESSION_CHECK_INTERVAL_MS);
@@ -1378,6 +1394,16 @@ useEffect(() => {
     }
   }, [darkMode]);
 
+  // Apply server-backed settings when theme profile loads or user switches profile (debug: check Network + console [Theme])
+  const applyServerSettings = useCallback((settings) => {
+    if (!Array.isArray(settings)) return;
+    const map = {};
+    settings.forEach((s) => { if (s && s.key != null) map[s.key] = s.value; });
+    if (map.theme !== undefined) setDarkMode(map.theme === "dark");
+    if (map.fontSizeLevel !== undefined) { const n = Number(map.fontSizeLevel); if (!Number.isNaN(n)) setFontSizeLevel(n); }
+    if (map.layoutOption !== undefined) { const n = Number(map.layoutOption); if (!Number.isNaN(n)) setLayoutOption(n); }
+  }, []);
+
   // Sync dark mode with localStorage changes (e.g., from reports or another tab)
   useEffect(() => {
     const handleStorage = (e) => {
@@ -1420,11 +1446,52 @@ useEffect(() => {
       setLoggedIn(false);
       setUser(null);
       setShowSessionWarning(false);
+      setShowStayLoggedInPrompt(false);
     },
+  };
+
+  const handleStayLoggedIn = async () => {
+    const ok = await extendSession();
+    if (ok) {
+      loggedInAtRef.current = Date.now();
+      setShowStayLoggedInPrompt(false);
+    } else {
+      setLoggedIn(false);
+      setShowStayLoggedInPrompt(false);
+    }
   };
 
   return (
       <AuthContext.Provider value={authContextValue}>
+      <ThemeProfileProvider
+        isLoggedIn={isLoggedIn}
+        onSettingsLoaded={applyServerSettings}
+        themeProfileRef={themeProfileRef}
+      >
+      {showStayLoggedInPrompt && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" aria-labelledby="stay-logged-in-title">
+          <div className="bg-white dark:bg-[#222] rounded-xl p-6 max-w-sm w-full shadow-xl border border-gray-200 dark:border-gray-700 mx-4">
+            <h2 id="stay-logged-in-title" className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Stay logged in?</h2>
+            <p className="text-gray-600 dark:text-gray-300 text-sm mb-4">You have been logged in for a while. Do you want to stay logged in?</p>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={async () => { setShowStayLoggedInPrompt(false); await authContextValue.logout(); }}
+                className="flex-1 py-2 rounded-lg bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 font-semibold"
+              >
+                Log out
+              </button>
+              <button
+                type="button"
+                onClick={handleStayLoggedIn}
+                className="flex-1 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-semibold"
+              >
+                Stay logged in
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {showSessionWarning && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" aria-labelledby="session-warning-title">
           <div className="bg-white dark:bg-[#222] rounded-xl p-6 max-w-sm w-full shadow-xl border border-gray-200 dark:border-gray-700 mx-4">
@@ -1465,14 +1532,20 @@ useEffect(() => {
               </div>
               {/* Light/Dark mode toggle button */}
               <button
-                onClick={() => setDarkMode(dm => !dm)}
+                onClick={() => {
+                  setDarkMode((dm) => {
+                    const next = !dm;
+                    themeProfileRef.current?.saveSetting("theme", next ? "dark" : "light");
+                    return next;
+                  });
+                }}
                 className="absolute right-8 top-3 z-20 p-2 rounded-full bg-white/80 dark:bg-gray-800/80 shadow hover:scale-110 transition-all"
                 title={darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
                 style={{ fontSize: 24 }}
               >
                 {darkMode ? '🌞' : '🌙'}
               </button>
-              <LogoutButton className="absolute right-36 top-3 z-20 px-2 py-1 rounded-full bg-white/80 dark:bg-gray-800/80 shadow hover:scale-105 transition-all text-sm font-semibold text-red-600 dark:text-red-400" />
+              <ProfilePanel buttonClassName="absolute right-36 top-3 z-20 px-3 py-2 rounded-full bg-white/80 dark:bg-gray-800/80 shadow hover:scale-105 transition-all text-sm font-semibold text-gray-700 dark:text-gray-200" />
               <button
                 onClick={() => setIsSoundOpen(true)}
                 className="absolute right-24 top-3 z-20 px-2 py-1 rounded-full bg-white/80 dark:bg-gray-800/80 shadow hover:scale-105 transition-all text-sm font-semibold"
@@ -1619,6 +1692,7 @@ useEffect(() => {
         const newOption = Math.max(1, layoutOption - 1);
         setLayoutOption(newOption);
         localStorage.setItem("layoutOption", newOption);
+        themeProfileRef.current?.saveSetting("layoutOption", newOption);
       }}
       className="bg-gray-300 hover:bg-gray-400 text-black px-2 py-1 md:px-3 md:py-1.5 rounded text-sm md:text-base"
     >
@@ -1629,6 +1703,7 @@ useEffect(() => {
         const newOption = Math.min(14, layoutOption + 1);
         setLayoutOption(newOption);
         localStorage.setItem("layoutOption", newOption);
+        themeProfileRef.current?.saveSetting("layoutOption", newOption);
       }}
       className="bg-gray-300 hover:bg-gray-400 text-black px-2 py-1 md:px-3 md:py-1.5 rounded text-sm md:text-base"
     >
@@ -1643,6 +1718,7 @@ useEffect(() => {
           setFontSizeLevel((prev) => {
             const newLevel = Math.max(1, prev - 1);
             localStorage.setItem("fontSizeLevel", newLevel);
+            themeProfileRef.current?.saveSetting("fontSizeLevel", newLevel);
             return newLevel;
           })
         }
@@ -1659,6 +1735,7 @@ useEffect(() => {
           setFontSizeLevel((prev) => {
             const newLevel = Math.min(30, prev + 1);
             localStorage.setItem("fontSizeLevel", newLevel);
+            themeProfileRef.current?.saveSetting("fontSizeLevel", newLevel);
             return newLevel;
           })
         }
@@ -1975,6 +2052,7 @@ useEffect(() => {
           </>
         } />
       </Routes>
+      </ThemeProfileProvider>
       </AuthContext.Provider>
   );
 };

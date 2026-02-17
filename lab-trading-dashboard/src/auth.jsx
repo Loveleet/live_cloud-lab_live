@@ -78,6 +78,15 @@ export async function checkSession() {
   return data?.ok && data?.user ? data : null;
 }
 
+/** Extend session (call when user clicks "Stay logged in" after 1 hour). */
+export async function extendSession() {
+  const url = api("/auth/extend-session");
+  const res = await fetch(url, { method: "POST", credentials: "include" });
+  if (!res.ok) return false;
+  const data = await res.json().catch(() => ({}));
+  return !!data?.ok;
+}
+
 // Legacy exports for compatibility
 export const AUTH_STORAGE_KEY = "lab_trading_auth";
 export const SESSION_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
