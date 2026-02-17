@@ -686,6 +686,19 @@ const LiveTradeViewPage = () => {
       return next;
     });
   }, []);
+  // Upper panel (summary + filters + signals): collapse so table is visible; persisted
+  const UPPER_PANEL_STORAGE_KEY = 'liveTradeView_upper_panel_expanded';
+  const [upperPanelExpanded, setUpperPanelExpanded] = useState(() => {
+    const saved = localStorage.getItem(UPPER_PANEL_STORAGE_KEY);
+    return saved !== 'false';
+  });
+  const toggleUpperPanel = useCallback(() => {
+    setUpperPanelExpanded((prev) => {
+      const next = !prev;
+      localStorage.setItem(UPPER_PANEL_STORAGE_KEY, String(next));
+      return next;
+    });
+  }, []);
   const [apiJsonLabels, setApiJsonLabels] = useState([]);
   const [apiLoaded, setApiLoaded] = useState(false);
   useEffect(() => {
@@ -2076,9 +2089,9 @@ const LiveTradeViewPage = () => {
     <div
       className={darkMode ? 'dark' : ''}
       style={{
-        minHeight: '100vh',
-        background: darkMode ? '#181a20' : '#f7f7fa',
+        height: '100vh',
         overflowY: 'auto',
+        background: darkMode ? '#181a20' : '#f7f7fa',
       }}
     >
 
@@ -2722,18 +2735,104 @@ const LiveTradeViewPage = () => {
       >
         {darkMode ? '🌞' : '🌙'}
       </button>
-      {/* Main content container: list first, then signals; page scrolls when content is tall */}
+      {/* Main content: scrollable area */}
       <div style={{ 
         padding: '0 64px 0 32px',
         position: 'relative', 
         display: 'flex', 
         flexDirection: 'column', 
-        minHeight: '100vh',
         boxSizing: 'border-box',
-        overflowY: 'auto',
       }}>
-      {/* Top section: summary + filters + events list; minHeight so page can scroll when content is tall */}
-      <div style={{ flex: '0 0 auto', minHeight: '60vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      {/* Upper panel: summary + filters + signals — collapsible, button always visible at top */}
+      <div style={{ flex: '0 0 auto', marginBottom: 8 }}>
+        <button
+          type="button"
+          onClick={toggleUpperPanel}
+          style={{
+            width: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '10px 14px',
+            border: darkMode ? '1px solid #334155' : '1px solid #d1d5db',
+            borderRadius: 8,
+            background: darkMode ? '#334155' : '#e5e7eb',
+            color: darkMode ? '#e2e8f0' : '#111',
+            fontSize: 15,
+            fontWeight: 600,
+            cursor: 'pointer',
+            textAlign: 'left',
+          }}
+          title={upperPanelExpanded ? 'Collapse summary and filters' : 'Expand summary and filters'}
+        >
+          <span>Summary, filters &amp; signals (5m, 15m, 1h, 4h)</span>
+          <span style={{ fontSize: 16 }}>{upperPanelExpanded ? '▼ Collapse' : '▶ Expand'}</span>
+        </button>
+        {upperPanelExpanded && (
+        <>
+      {/* Signals (5m, 15m, 1h, 4h) — inside upper panel, own collapse */}
+      {signalsData?.ok && signalsData?.intervals && (
+        <div style={{ marginTop: 12, border: darkMode ? '1px solid #334155' : '1px solid #e2e8f0', borderRadius: 8, background: darkMode ? '#1e293b' : '#f1f5f9', overflow: 'hidden' }}>
+          <button
+            type="button"
+            onClick={toggleSignalsPanel}
+            style={{
+              width: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '8px 12px',
+              border: 'none',
+              background: darkMode ? '#334155' : '#e2e8f0',
+              color: darkMode ? '#e2e8f0' : '#222',
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: 'pointer',
+              textAlign: 'left',
+            }}
+          >
+            <span>Signals (5m, 15m, 1h, 4h)</span>
+            <span>{signalsPanelExpanded ? '▼ Collapse' : '▶ Expand'}</span>
+          </button>
+          {signalsPanelExpanded && (
+          <div style={{ maxHeight: '32vh', overflowY: 'auto', padding: 12 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, padding: 12, background: darkMode ? '#0f172a' : '#fff', borderRadius: 6, border: darkMode ? '1px solid #475569' : '1px solid #e2e8f0' }}>
+              {['5m', '15m', '1h', '4h'].map((interval) => {
+                const iv = signalsData.intervals[interval];
+                const summary = iv?.ok ? iv.summary : null;
+                const err = iv?.error || null;
+                return (
+                  <div key={interval} style={{ flex: '1 1 180px', minWidth: 160, padding: 12, background: darkMode ? '#0f172a' : '#fff', borderRadius: 6, border: darkMode ? '1px solid #475569' : '1px solid #e2e8f0', color: darkMode ? '#e2e8f0' : '#222', fontSize: 12 }}>
+                    <div style={{ fontWeight: 700, marginBottom: 8, color: darkMode ? '#38bdf8' : '#0ea5e9' }}>{signalsData.symbol} — {interval}</div>
+                    {err && <div style={{ color: '#ef4444' }}>{err}</div>}
+                    {summary && Array.isArray(summary) && summary.length > 0 && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {summary.map((row, rowIdx) => (
+                          <div key={rowIdx} style={{ borderBottom: rowIdx < summary.length - 1 ? (darkMode ? '1px solid #334155' : '1px solid #e2e8f0') : 'none', paddingBottom: 8 }}>
+                            <div style={{ fontWeight: 600, marginBottom: 4, fontSize: 11, opacity: 0.9 }}>Row {summary.length - rowIdx} (last {summary.length})</div>
+                            {typeof row === 'object' && row !== null && (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                {Object.entries(row).filter(([k, v]) => v != null && k !== 'time').slice(0, 14).map(([key, value]) => (
+                                  <div key={key} style={{ display: 'flex', justifyContent: 'space-between', gap: 6, fontSize: 11 }}>
+                                    <span style={{ opacity: 0.8 }}>{key}</span>
+                                    <span style={{ fontWeight: 500 }}>{typeof value === 'number' ? (Number.isInteger(value) ? value : value?.toFixed?.(4) ?? value) : String(value)}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {(!summary || (Array.isArray(summary) && summary.length === 0)) && !err && <div style={{ opacity: 0.7 }}>No data</div>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          )}
+        </div>
+      )}
       <LiveTradeListViewComponent
         uid={uid}
         interval={interval}
@@ -2743,10 +2842,12 @@ const LiveTradeViewPage = () => {
         filterBar={filterBar}
         trades={filteredBotEventLogs}
         darkMode={darkMode}
-        // Add more props as needed
       />
-        {/* Table: attractive styling similar to main dashboard — flex so list stays visible and scrolls */}
-        <div style={{ margin: `${filterTableSpacing}px 0 0 0`, flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        </>
+        )}
+      </div>
+      {/* Table section — no minHeight gap */}
+        <div style={{ margin: `${filterTableSpacing}px 0 0 0`, flex: 1, minHeight: 280, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <div style={{ 
             color: darkMode ? '#fff' : '#222', 
             margin: '8px 0 16px 0',
@@ -3392,114 +3493,6 @@ const LiveTradeViewPage = () => {
           </div>
         </div>
       </div>
-      {/* Signals from Python API: 5m, 15m, 1h, 4h — expand/collapse, state saved to localStorage */}
-      {signalsData?.ok && signalsData?.intervals && (
-        <div style={{
-          flex: '0 0 auto',
-          marginTop: 12,
-          padding: '0 0 24px 0',
-          border: darkMode ? '1px solid #334155' : '1px solid #e2e8f0',
-          borderRadius: 8,
-          background: darkMode ? '#1e293b' : '#f1f5f9',
-          overflow: 'hidden',
-        }}>
-          <button
-            type="button"
-            onClick={toggleSignalsPanel}
-            style={{
-              width: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              padding: '10px 14px',
-              border: 'none',
-              background: darkMode ? '#334155' : '#e2e8f0',
-              color: darkMode ? '#e2e8f0' : '#222',
-              fontSize: 14,
-              fontWeight: 600,
-              cursor: 'pointer',
-              textAlign: 'left',
-            }}
-            title={signalsPanelExpanded ? 'Collapse signals panel' : 'Expand signals panel'}
-          >
-            <span>Signals (5m, 15m, 1h, 4h) — from API</span>
-            <span style={{ fontSize: 18 }}>{signalsPanelExpanded ? '▼ Collapse' : '▶ Expand'}</span>
-          </button>
-          {signalsPanelExpanded && (
-          <div style={{
-            maxHeight: '38vh',
-            overflowY: 'auto',
-            padding: 12,
-          }}>
-          <div style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: 12,
-            padding: 12,
-            background: darkMode ? '#0f172a' : '#fff',
-            borderRadius: 6,
-            border: darkMode ? '1px solid #475569' : '1px solid #e2e8f0',
-          }}>
-            {['5m', '15m', '1h', '4h'].map((interval) => {
-              const iv = signalsData.intervals[interval];
-              const summary = iv?.ok ? iv.summary : null;
-              const err = iv?.error || null;
-              return (
-                <div
-                  key={interval}
-                  style={{
-                    flex: '1 1 180px',
-                    minWidth: 160,
-                    padding: 12,
-                    background: darkMode ? '#0f172a' : '#fff',
-                    borderRadius: 6,
-                    border: darkMode ? '1px solid #475569' : '1px solid #e2e8f0',
-                    color: darkMode ? '#e2e8f0' : '#222',
-                    fontSize: 12,
-                  }}
-                >
-                  <div style={{ fontWeight: 700, marginBottom: 8, color: darkMode ? '#38bdf8' : '#0ea5e9' }}>
-                    {signalsData.symbol} — {interval}
-                  </div>
-                  {err && <div style={{ color: '#ef4444' }}>{err}</div>}
-                  {summary && Array.isArray(summary) && summary.length > 0 && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {summary.map((row, rowIdx) => (
-                        <div key={rowIdx} style={{ borderBottom: rowIdx < summary.length - 1 ? (darkMode ? '1px solid #334155' : '1px solid #e2e8f0') : 'none', paddingBottom: 8 }}>
-                          <div style={{ fontWeight: 600, marginBottom: 4, fontSize: 11, opacity: 0.9 }}>Row {summary.length - rowIdx} (last {summary.length})</div>
-                          {typeof row === 'object' && row !== null && (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                              {Object.entries(row).filter(([k, v]) => v != null && k !== 'time').slice(0, 14).map(([key, value]) => (
-                                <div key={key} style={{ display: 'flex', justifyContent: 'space-between', gap: 6, fontSize: 11 }}>
-                                  <span style={{ opacity: 0.8 }}>{key}</span>
-                                  <span style={{ fontWeight: 500 }}>{typeof value === 'number' ? (Number.isInteger(value) ? value : value?.toFixed?.(4) ?? value) : String(value)}</span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {summary && typeof summary === 'object' && !Array.isArray(summary) && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      {Object.entries(summary).filter(([k, v]) => v != null && k !== 'time').slice(0, 12).map(([key, value]) => (
-                        <div key={key} style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                          <span style={{ opacity: 0.8 }}>{key}</span>
-                          <span style={{ fontWeight: 500 }}>{typeof value === 'number' ? (Number.isInteger(value) ? value : value?.toFixed?.(4) ?? value) : String(value)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {summary && typeof summary !== 'object' && !Array.isArray(summary) && <div>{String(summary)}</div>}
-                </div>
-              );
-            })}
-          </div>
-          </div>
-          )}
-        </div>
-      )}
     </div>
   );
 };
