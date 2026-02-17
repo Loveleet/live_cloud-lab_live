@@ -499,13 +499,73 @@ try:
     def hedgePosition(symbol, side, posSide, qty):
         """
         Open a hedge position: market order for the given side and position side (LONG/SHORT).
+        Returns order response dict on success, or {"ok": False, "message": "..."} on error.
         """
         try:
-            resp2 = client.new_order(symbol=symbol, side=side, positionSide=posSide, type='MARKET', quantity=qty)
-            print("\033[93mStop Loss:", resp2, "\033[0m")
+
+             return {"ok": False, "message": "Hedge Position Not Implemented"}
+            # resp2 = client.new_order(symbol=symbol, side=side, positionSide=posSide, type='MARKET', quantity=qty)
+            # print("\033[93mHedge order:", resp2, "\033[0m")
+            # return resp2
         except Exception as e:
             _log_error(f"hedgePosition({symbol}): {e}", critical=True, exc=e)
             return {"ok": False, "message": str(e)}
+
+    def place_hedge_opposite(symbol, current_position_side, quantity):
+        """
+        If opposite position already exists for symbol, return {"ok": False, "message": "Pair already in hedge position"}.
+        Otherwise place opposite hedge via open_hedge_position and return {"ok": True, "order": result, "message": "..."}.
+        current_position_side: 'LONG' or 'SHORT' (the side we already have).
+        quantity: size to open for the opposite side.
+        """
+        try:
+            pos_list = getOpenPosition(symbol)
+            if pos_list is None:
+                pos_list = []
+            opposite = 'SHORT' if current_position_side.upper() == 'LONG' else 'LONG'
+            for p in pos_list:
+                if (p.get('positionSide') or '').upper() == opposite:
+                    amt = float(p.get('positionAmt', 0.0))
+                    if abs(amt) > 0:
+                        return {"ok": False, "message": "Pair already in hedge position"}
+            qty_f = float(quantity)
+            if qty_f <= 0:
+                return {"ok": False, "message": "Quantity must be positive"}
+            result = open_hedge_position(symbol, opposite, qty_f)
+            if isinstance(result, dict) and result.get('ok') is False:
+                return result
+            return {"ok": True, "order": result, "message": f"Hedge order placed: {opposite} {qty_f}"}
+        except Exception as e:
+            _log_error(f"place_hedge_opposite({symbol}): {e}", critical=True, exc=e)
+            return {"ok": False, "message": str(e)}
+
+    def NewOrderPlace(symbol, invest, stop_price, position_side='LONG'):
+        """
+        Place a new hedge order: getQuantity(symbol, invest) -> quantity, then HedgeModePlaceOrder,
+        then setHedgeStopLoss for the position. position_side is LONG or SHORT.
+        Returns order response dict or {"ok": False, "message": "..."} on error.
+        """
+        return {"ok": False, "message": f'NewOrderPlace Not Implemented {symbol} {invest} {stop_price} {position_side}'}
+        # quantity, _, _ = getQuantity(symbol, float(invest))
+        # if quantity is None or quantity <= 0:
+        #     return {"ok": False, "message": "Could not compute quantity for this investment"}
+        # pos_side = (position_side or 'LONG').upper()
+        # if pos_side not in ('LONG', 'SHORT'):
+        #     return {"ok": False, "message": "position_side must be LONG or SHORT"}
+        # side = 'BUY' if pos_side == 'LONG' else 'SELL'
+        # order_out = HedgeModePlaceOrder(symbol, side, pos_side, quantity)
+        # if isinstance(order_out, dict) and order_out.get('ok') is False:
+        #     return order_out
+        # close_side = 'SELL' if pos_side == 'LONG' else 'BUY'
+        # try:
+        #     stop_price_f = float(stop_price)
+        # except (TypeError, ValueError):
+        #     return {"ok": False, "message": "stop_price must be a number"}
+        # sl_out = setHedgeStopLoss(symbol, stop_price_f, close_side, pos_side)
+        # if isinstance(sl_out, dict) and sl_out.get('ok') is False:
+        #     _log_error(f"NewOrderPlace setHedgeStopLoss({symbol}): {sl_out.get('message', '')}", critical=False)
+        #     # Order was placed; return success but caller may see stop-loss as failed if needed
+        # return order_out if isinstance(order_out, dict) else {"ok": True, "order": order_out}
 
     @retry_um_futures(critical_on_final_failure=True)
     def closeOrder(symbol):

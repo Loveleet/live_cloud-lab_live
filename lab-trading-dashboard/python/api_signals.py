@@ -78,7 +78,7 @@ import os
 # Add utils directory to path to import main_binance
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'utils'))
 try:
-    from utils.main_binance import getAllOpenPosition, getOpenPosition, closeOrder, close_hedge_position, setHedgeStopLoss, HedgeModePlaceOrder, getQuantity, client
+    from utils.main_binance import getAllOpenPosition, getOpenPosition, closeOrder, close_hedge_position, setHedgeStopLoss, HedgeModePlaceOrder, getQuantity, NewOrderPlace, place_hedge_opposite, client
     from utils.Final_olab_database import olab_sync_exchange_trades
 except ImportError as e:
     _log(f"Could not import main_binance or Final_olab_database: {e}", "WARN")
@@ -89,6 +89,8 @@ except ImportError as e:
     setHedgeStopLoss = None
     HedgeModePlaceOrder = None
     getQuantity = None
+    NewOrderPlace = None
+    place_hedge_opposite = None
     client = None
     olab_sync_exchange_trades = None
 
@@ -267,6 +269,95 @@ def open_position():
         import traceback
         traceback.print_exc()
         return jsonify({"ok": False, "message": error_msg}), 500
+
+
+@app.route("/api/execute", methods=["POST", "OPTIONS"])
+def execute():
+    """
+    Place a new order via main_binance.NewOrderPlace(symbol, invest, stop_price, position_side).
+    Body: { symbol, amount (invest in USDT), stop_price, position_side (optional, default LONG), password }.
+    Flow: getQuantity -> HedgeModePlaceOrder -> setHedgeStopLoss.
+    """
+    if request.method == "OPTIONS":
+        return "", 204
+    if NewOrderPlace is None:
+        return jsonify({"ok": False, "message": "NewOrderPlace not available"}), 500
+    data = request.get_json(silent=True) or {}
+    symbol = (data.get("symbol") or "").strip().upper()
+    amount_val = data.get("amount")
+    stop_price_val = data.get("stop_price")
+    position_side = (data.get("position_side") or "LONG").strip().upper()
+    if not symbol:
+        return jsonify({"ok": False, "message": "symbol required"}), 400
+    if amount_val is None or amount_val == "":
+        return jsonify({"ok": False, "message": "amount required"}), 400
+    if stop_price_val is None or stop_price_val == "":
+        return jsonify({"ok": False, "message": "stop_price required"}), 400
+    try:
+        amount_float = float(amount_val)
+        stop_price_float = float(stop_price_val)
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "message": "amount and stop_price must be numbers"}), 400
+    if amount_float <= 0:
+        return jsonify({"ok": False, "message": "amount must be positive"}), 400
+    if position_side not in ("LONG", "SHORT"):
+        return jsonify({"ok": False, "message": "position_side must be LONG or SHORT"}), 400
+    result = NewOrderPlace(symbol, amount_float, stop_price_float, position_side)
+    if isinstance(result, dict) and result.get("ok") is False:
+        error_msg = result.get("message", "Unknown error")
+        _log(f"execute | {symbol}: Error: {error_msg}", "ERROR")
+        return jsonify({"ok": False, "message": error_msg}), 500
+    _log(f"execute | {symbol} {position_side} invest={amount_float} stop={stop_price_float}: OK")
+    return jsonify({
+        "ok": True,
+        "symbol": symbol,
+        "position_side": position_side,
+        "amount": amount_float,
+        "stop_price": stop_price_float,
+        "message": "Order placed",
+        "order": result,
+    })
+
+
+@app.route("/api/hedge", methods=["POST", "OPTIONS"])
+def hedge():
+    """
+    Place opposite hedge via main_binance.place_hedge_opposite(symbol, current_position_side, quantity).
+    If opposite position already exists, returns {"ok": False, "message": "Pair already in hedge position"}.
+    Body: { symbol, position_side (current: LONG or SHORT), quantity, password }.
+    """
+    if request.method == "OPTIONS":
+        return "", 204
+    if place_hedge_opposite is None:
+        return jsonify({"ok": False, "message": "place_hedge_opposite not available"}), 500
+    data = request.get_json(silent=True) or {}
+    symbol = (data.get("symbol") or "").strip().upper()
+    position_side = (data.get("position_side") or "LONG").strip().upper()
+    quantity_val = data.get("quantity")
+    if not symbol:
+        return jsonify({"ok": False, "message": "symbol required"}), 400
+    if quantity_val is None or quantity_val == "":
+        return jsonify({"ok": False, "message": "quantity required"}), 400
+    try:
+        quantity_float = float(quantity_val)
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "message": "quantity must be a number"}), 400
+    if quantity_float <= 0:
+        return jsonify({"ok": False, "message": "quantity must be positive"}), 400
+    if position_side not in ("LONG", "SHORT"):
+        return jsonify({"ok": False, "message": "position_side must be LONG or SHORT"}), 400
+    result = place_hedge_opposite(symbol, position_side, quantity_float)
+    if isinstance(result, dict) and result.get("ok") is False:
+        msg = result.get("message", "Unknown error")
+        _log(f"hedge | {symbol}: {msg}", "WARN" if "already in hedge" in msg.lower() else "ERROR")
+        return jsonify({"ok": False, "message": msg}), 200 if "already in hedge" in msg.lower() else 500
+    _log(f"hedge | {symbol} opposite of {position_side} qty={quantity_float}: OK")
+    return jsonify({
+        "ok": True,
+        "symbol": symbol,
+        "message": result.get("message", "Hedge order placed"),
+        "order": result.get("order"),
+    })
 
 
 @app.route("/api/close-order", methods=["GET", "POST", "OPTIONS"])
