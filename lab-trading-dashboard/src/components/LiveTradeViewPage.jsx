@@ -2846,8 +2846,8 @@ const LiveTradeViewPage = () => {
         </>
         )}
       </div>
-      {/* Table section — no minHeight gap */}
-        <div style={{ margin: `${filterTableSpacing}px 0 0 0`, flex: 1, minHeight: 280, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      {/* Table section — no flex growth so no gap between Export row and table */}
+        <div style={{ margin: `${filterTableSpacing}px 0 0 0`, flex: '0 0 auto', display: 'flex', flexDirection: 'column' }}>
           <div style={{ 
             color: darkMode ? '#fff' : '#222', 
             margin: '8px 0 16px 0',
@@ -3060,15 +3060,14 @@ const LiveTradeViewPage = () => {
           {/* Adjust Modal (draggable, checkable list) */}
           {/* REMOVE: All code that references adjustModalOpen, setAdjustModalOpen, and related modal open/close logic. */}
           
-          {/* Beautiful table container */}
+          {/* Beautiful table container — fixed min height so no gap, table scrolls inside */}
           <div className="overflow-auto border border-gray-300 rounded-lg" style={{
             background: darkMode ? '#181a20' : '#f5ecd7',
             boxShadow: '0 4px 16px rgba(0,0,0,0.1)',
             border: darkMode ? '1px solid #334155' : '1px solid #d1d5db',
-            fontSize: `${fontSize}em`, // Apply font size here
+            fontSize: `${fontSize}em`,
             position: 'relative',
-            flex: 1,
-            minHeight: 0, // Important for flex child
+            minHeight: 420,
           }}>
             {/* Font/label controls below sticky filter bar, above table */}
           <div style={{
