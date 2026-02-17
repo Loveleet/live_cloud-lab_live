@@ -118,6 +118,7 @@ const STAY_LOGGED_IN_PROMPT_AFTER_MS = 60 * 60 * 1000; // show "Stay logged in?"
 
 const App = () => {
   const [isLoggedIn, setLoggedIn] = useState(false);
+  const [user, setUser] = useState(null);
   const [authChecking, setAuthChecking] = useState(true);
   const [showSessionWarning, setShowSessionWarning] = useState(false);
   const [showStayLoggedInPrompt, setShowStayLoggedInPrompt] = useState(false);
@@ -188,9 +189,11 @@ const App = () => {
     checkSession().then((data) => {
       setLoggedIn(!!data);
       if (data) loggedInAtRef.current = Date.now();
+      setUser(data?.user ?? null);
       setAuthChecking(false);
     }).catch(() => {
       setLoggedIn(false);
+      setUser(null);
       setAuthChecking(false);
     });
   }, []);
@@ -207,10 +210,12 @@ const App = () => {
       checkSession().then((data) => {
         if (!data) {
           setLoggedIn(false);
+          setUser(null);
           setShowSessionWarning(false);
           setShowStayLoggedInPrompt(false);
           return;
         }
+        setUser(data.user ?? null);
         const elapsed = Date.now() - loggedInAtRef.current;
         if (elapsed >= STAY_LOGGED_IN_PROMPT_AFTER_MS) {
           setShowStayLoggedInPrompt(true);
@@ -1423,9 +1428,11 @@ useEffect(() => {
   }
 
   const authContextValue = {
+    user,
     logout: async () => {
       await logoutApi();
       setLoggedIn(false);
+      setUser(null);
       setShowSessionWarning(false);
       setShowStayLoggedInPrompt(false);
     },

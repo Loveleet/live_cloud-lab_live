@@ -78,12 +78,13 @@ import os
 # Add utils directory to path to import main_binance
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'utils'))
 try:
-    from utils.main_binance import getAllOpenPosition, getOpenPosition
+    from utils.main_binance import getAllOpenPosition, getOpenPosition, closeOrder
     from utils.Final_olab_database import olab_sync_exchange_trades
 except ImportError as e:
-    _log(f"Could not import getAllOpenPosition, getOpenPosition or olab_sync_exchange_trades: {e}", "WARN")
+    _log(f"Could not import getAllOpenPosition, getOpenPosition, closeOrder or olab_sync_exchange_trades: {e}", "WARN")
     getAllOpenPosition = None
     getOpenPosition = None
+    closeOrder = None
     olab_sync_exchange_trades = None
 
 app = Flask(__name__)
@@ -260,6 +261,36 @@ def open_position():
         _log(f"open-position | Error: {error_msg}", "ERROR")
         import traceback
         traceback.print_exc()
+        return jsonify({"ok": False, "message": error_msg}), 500
+
+
+@app.route("/api/close-order", methods=["GET", "POST", "OPTIONS"])
+def close_order():
+    """Cancel all open orders for a symbol via main_binance.closeOrder(symbol)."""
+    if request.method == "OPTIONS":
+        return "", 204
+
+    if closeOrder is None:
+        return jsonify({"ok": False, "message": "closeOrder not available"}), 500
+
+    symbol = (request.args.get("symbol") or (request.get_json(silent=True) or {}).get("symbol") or "").strip().upper()
+    if not symbol:
+        return jsonify({"ok": False, "message": "symbol required"}), 400
+
+    try:
+        result = closeOrder(symbol)
+        # Binance returns {"code": 200, "msg": "The operation of cancel all open order is done."}
+        msg = (result.get("msg") if isinstance(result, dict) and result else None) or f"Open orders for {symbol} cleared"
+        _log(f"close-order | {symbol}: OK | {msg}")
+        return jsonify({
+            "ok": True,
+            "symbol": symbol,
+            "message": msg,
+            "orders": result if isinstance(result, (list, dict)) else [],
+        })
+    except Exception as e:
+        error_msg = str(e)
+        _log(f"close-order | {symbol}: Error: {error_msg}", "ERROR")
         return jsonify({"ok": False, "message": error_msg}), 500
 
 

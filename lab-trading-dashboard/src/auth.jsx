@@ -28,6 +28,21 @@ export function LogoutButton({ className = "", ...rest }) {
   );
 }
 
+/** Display logged-in user email (top right, near Logout) */
+export function UserEmailDisplay({ className = "" }) {
+  const auth = React.useContext(AuthContext);
+  const email = auth?.user?.email;
+  if (!email) return null;
+  return (
+    <span
+      className={`text-white/90 text-sm truncate max-w-[180px] ${className}`}
+      title={email}
+    >
+      {email}
+    </span>
+  );
+}
+
 /** Login with email + password. Returns { ok, user } on success, throws on failure. */
 export async function loginWithCredentials(email, password) {
   const em = (email || "").trim();

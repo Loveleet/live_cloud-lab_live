@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { useNavigate } from "react-router-dom";
 import { Play, Settings, Square, Shield, Crosshair, LayoutGrid } from "lucide-react";
 import { formatTradeData } from "./TableView";
-import { LogoutButton } from "../auth";
+import { LogoutButton, UserEmailDisplay } from "../auth";
 import { API_BASE_URL, api, apiFetch, apiSignals, apiSignalsFetch } from "../config";
 
 const REFRESH_INTERVAL_KEY = "refresh_app_main_intervalSec";
@@ -222,6 +222,7 @@ function ConfirmActionModal({
   const [amount, setAmount] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
+  const [successMessage, setSuccessMessage] = useState("Success!");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const title = ACTION_LABELS[actionType] || actionType;
@@ -235,6 +236,7 @@ function ConfirmActionModal({
     setAmount("");
     setError("");
     setSuccess(false);
+    setSuccessMessage("Success!");
     setIsSubmitting(false);
   }, []);
 
@@ -271,7 +273,9 @@ function ConfirmActionModal({
       const payload = { password: (password || "").trim() };
       if (requireAmount) payload.amount = amount.trim();
       if (extraValue !== undefined) payload.extraValue = extraValue;
-      await (onConfirm && onConfirm(payload));
+      const result = await (onConfirm && onConfirm(payload));
+      const msg = (result && typeof result === "string") ? result : (result?.successMessage ?? "Success!");
+      setSuccessMessage(msg);
       setSuccess(true);
       setTimeout(handleClose, 1500);
     } catch (e) {
@@ -297,7 +301,7 @@ function ConfirmActionModal({
       >
         <h3 className="font-semibold text-lg mb-3">{title}</h3>
         {showSuccess && (
-          <p className="text-green-600 dark:text-green-400 font-medium mb-4">Success!</p>
+          <p className="text-green-600 dark:text-green-400 font-medium mb-4">{successMessage}</p>
         )}
         {!showSuccess && showPasswordStep && (
           <>
@@ -2663,6 +2667,7 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
     (typeof rawTrade.exist_in_exchange === "string" && parseFloat(rawTrade.exist_in_exchange) > 0)
   );
   const [exchangePositionData, setExchangePositionData] = useState(null);
+  const [binanceDataRefreshKey, setBinanceDataRefreshKey] = useState(0);
 
   // --- Binance Data table settings: column order + visibility (+ actions column) ---
   const [binanceColumns, setBinanceColumns] = useState(() => {
@@ -2727,7 +2732,7 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
     fetchOpenPosition();
     const id = setInterval(fetchOpenPosition, EXCHANGE_POLL_MS);
     return () => clearInterval(id);
-  }, [isExistInExchange, signalSymbol]);
+  }, [isExistInExchange, signalSymbol, binanceDataRefreshKey]);
 
   const [fieldOrder, setFieldOrder] = useState(() => {
     try {
@@ -3156,11 +3161,25 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
     });
   }, [rawTrade?.unique_id, callPythonApi]);
   const handleClear = useCallback(async ({ password }) => {
-    await callPythonApi("/api/clear", {
-      unique_id: rawTrade?.unique_id,
-      password,
+    const sym = signalSymbol || (rawTrade?.pair || stripHtml(row.Pair) || "").replace("/", "").trim().toUpperCase();
+    if (!sym) throw new Error("Symbol not found");
+    const url = api("/api/close-order");
+    const res = await apiFetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ symbol: sym, password: (password || "").trim() }),
     });
-  }, [rawTrade?.unique_id, callPythonApi]);
+    const data = await res.json().catch(() => ({ message: res.statusText }));
+    if (!res.ok) {
+      throw new Error(data.message || data.error || "Close order failed");
+    }
+    if (data && data.ok === false) {
+      throw new Error(data.message || "Close order failed");
+    }
+    // Success: refresh Binance data so UI shows updated state
+    setBinanceDataRefreshKey((k) => k + 1);
+    return { successMessage: data.message || "The operation of cancel all open order is done." };
+  }, [signalSymbol, rawTrade?.pair, row.Pair]);
 
   const isAutoEnabled = rawTrade?.auto === true || rawTrade?.auto === "true" || rawTrade?.auto === 1;
   const handleAutoPilot = useCallback(async ({ password, extraValue }) => {
@@ -3222,16 +3241,19 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
           ← Back
         </button>
         <span className="font-semibold text-base sm:text-lg truncate">Live Trade — {stripHtml(row.Pair) || "N/A"}</span>
-        <LogoutButton className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-semibold shrink-0" />
-        <button
-          type="button"
-          onClick={() => setShowLayoutSettings(true)}
-          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 transition-colors min-h-[40px] shrink-0"
-          title="Section order"
-        >
-          <LayoutGrid size={20} />
-          Layout
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <UserEmailDisplay />
+          <LogoutButton className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-semibold" />
+          <button
+            type="button"
+            onClick={() => setShowLayoutSettings(true)}
+            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 transition-colors min-h-[40px] shrink-0"
+            title="Section order"
+          >
+            <LayoutGrid size={20} />
+            Layout
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-4 space-y-3 sm:space-y-4 min-h-0">
@@ -3681,10 +3703,13 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
                                         </button>
                                         <div className="flex items-center gap-1">
                                           <input
-                                            type="text"
+                                            type="number"
+                                            inputMode="decimal"
+                                            step="any"
                                             value={stopPrice}
                                             onChange={(e) => setStopPrice(e.target.value)}
                                             placeholder="Stop"
+                                            autoComplete="off"
                                             className="border border-gray-400 dark:border-gray-600 rounded px-1 py-0.5 bg-white dark:bg-[#222] w-16"
                                           />
                                           <button
@@ -3710,7 +3735,7 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
                                           className="px-2 py-0.5 rounded bg-slate-600 hover:bg-slate-700 text-white font-semibold"
                                           title="Clear"
                                         >
-                                          Clear
+                                          Clear Order
                                         </button>
                                       </div>
                                     </td>

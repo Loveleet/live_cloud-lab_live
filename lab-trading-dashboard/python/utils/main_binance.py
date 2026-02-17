@@ -315,10 +315,13 @@ try:
 
     def closeOrder(symbol):
         try:
-            orders = client.cancel_open_orders(symbol=symbol)
-            return orders
+            #anish
+            # orders = client.cancel_open_orders(symbol=symbol)
+            # return orders
+             raise Exception("Dummy test: close order failed")
         except ClientError as e:
             print("Error:", e)
+            raise
 
     def getOrders(symbol):
         try:
