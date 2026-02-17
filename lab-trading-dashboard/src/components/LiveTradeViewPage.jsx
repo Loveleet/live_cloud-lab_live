@@ -2073,7 +2073,14 @@ const LiveTradeViewPage = () => {
   }
 
   return (
-    <div className={darkMode ? 'dark' : ''} style={{ minHeight: '100vh', background: darkMode ? '#181a20' : '#f7f7fa' }}>
+    <div
+      className={darkMode ? 'dark' : ''}
+      style={{
+        minHeight: '100vh',
+        background: darkMode ? '#181a20' : '#f7f7fa',
+        overflowY: 'auto',
+      }}
+    >
 
       {showExportModal && (
         <div style={{
