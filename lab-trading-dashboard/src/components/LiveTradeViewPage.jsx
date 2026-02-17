@@ -7,7 +7,7 @@ import PairStatsFilters from './PairStatsFilters';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import * as XLSX from 'xlsx';
-import { api, apiFetch, apiSignals, apiSignalsFetch } from '../config';
+import { api, apiFetch } from '../config';
 
 // loveleet work
 function useQuery() {
@@ -642,7 +642,7 @@ const LiveTradeViewPage = () => {
     if (!signalSymbol) return;
     const callCalculateSignals = async () => {
       try {
-        const res = await apiSignalsFetch('/api/calculate-signals', {
+        const res = await apiFetch(api('/api/calculate-signals'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ symbol: signalSymbol, candle: 'regular' }),

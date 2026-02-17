@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Play, Settings, Square, Shield, Crosshair, LayoutGrid } from "lucide-react";
 import { formatTradeData } from "./TableView";
 import { LogoutButton, UserEmailDisplay } from "../auth";
-import { API_BASE_URL, api, apiFetch, apiSignals, apiSignalsFetch } from "../config";
+import { API_BASE_URL, api, apiFetch } from "../config";
 
 const REFRESH_INTERVAL_KEY = "refresh_app_main_intervalSec";
 
@@ -142,6 +142,8 @@ const ROW_GROUP_COLORS = [
 
 // Signals grid: only these rows (label = display, key = API response key)
 const SIGNAL_ROWS = [
+  { label: "HA_LOW", key: "ha_low" },
+  { label: "HA_HIGH", key: "ha_high" },
   { label: "INST Signal", key: "INSTITUTIONAL_SIGNAL" },
   { label: "BB FLAT", key: "bb_flat_market" },
   { label: "BB FLAT SIGNAL", key: "bb_flat_signal" },
@@ -2640,7 +2642,7 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
     if (!signalSymbol) return;
     const callCalculateSignals = async () => {
       try {
-        const res = await apiSignalsFetch("/api/calculate-signals", {
+        const res = await apiFetch(api("/api/calculate-signals"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ symbol: signalSymbol, candle: "regular" }),
@@ -2721,7 +2723,7 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
     }
     const fetchOpenPosition = async () => {
       try {
-        const res = await apiSignalsFetch(`/api/open-position?symbol=${encodeURIComponent(signalSymbol)}`);
+        const res = await apiFetch(api(`/api/open-position?symbol=${encodeURIComponent(signalSymbol)}`));
         const data = await res.json().catch(() => ({}));
         if (data?.ok) setExchangePositionData(data);
         else setExchangePositionData({ ok: false, error: data?.message || "Failed to fetch" });
@@ -2785,6 +2787,14 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
   });
   const [stopPrice, setStopPrice] = useState("");
   const [actionModal, setActionModal] = useState({ open: false, type: null });
+  const [closeTradePreview, setCloseTradePreview] = useState(null);
+  const [stopPricePreview, setStopPricePreview] = useState(null);
+  const [addInvestmentPreview, setAddInvestmentPreview] = useState(null);
+  const [addInvNewQty, setAddInvNewQty] = useState(null);
+  const endTradeRowRef = useRef(null);
+  const setStopPriceRowRef = useRef(null);
+  const addInvestmentRowRef = useRef(null);
+  const clearOrderSymbolRef = useRef(null);
 
   const [infoGridHeight, setInfoGridHeight] = useSectionSize(INFO_GRID_HEIGHT_KEY, SIZE_CONFIG.infoGrid);
   const [infoLeftHeight, setInfoLeftHeight] = useSectionSize(INFO_LEFT_HEIGHT_KEY, SIZE_CONFIG.infoLeft);
@@ -2967,6 +2977,31 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
   });
   const importInputRef = useRef(null);
 
+  // Fetch quantity for add-investment preview when new amount changes
+  useEffect(() => {
+    if (!addInvestmentPreview?.symbol || !addInvestmentPreview?.newAmount) {
+      setAddInvNewQty(null);
+      return;
+    }
+    const num = parseFloat(addInvestmentPreview.newAmount);
+    if (Number.isNaN(num) || num <= 0) {
+      setAddInvNewQty(null);
+      return;
+    }
+    const t = setTimeout(async () => {
+      try {
+        const url = api(`/api/quantity-preview?symbol=${encodeURIComponent(addInvestmentPreview.symbol)}&invest=${encodeURIComponent(num)}`);
+        const res = await apiFetch(url);
+        const data = await res.json().catch(() => ({}));
+        if (data?.ok && data.quantity != null) setAddInvNewQty(data.quantity);
+        else setAddInvNewQty(null);
+      } catch {
+        setAddInvNewQty(null);
+      }
+    }, 400);
+    return () => clearTimeout(t);
+  }, [addInvestmentPreview?.symbol, addInvestmentPreview?.newAmount]);
+
   useEffect(() => {
     if (fieldOrder && fieldOrder.length) {
       try {
@@ -3099,69 +3134,100 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
 
   const chartSize = { width: 500, height: chartHeight };
 
-  // Call Python backend API (backend must expose these endpoints, e.g. Flask/FastAPI).
-  // Empty getApiBaseUrl() is valid (localhost → relative URL / Vite proxy; cloud → same-origin).
-  const callPythonApi = useCallback(async (endpoint, body) => {
-    const url = api(endpoint);
-    let res;
-    try {
-      res = await apiFetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-    } catch (e) {
-      throw new Error("Network error: cannot reach the API. If on localhost, start the server (e.g. node server or Python api_signals). If on GitHub Pages, wait for the page to load and try again.");
-    }
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      const msg = err.error || err.message || err.detail || res.statusText;
-      if (res.status === 404) {
-        throw new Error("API endpoint not found. Is the server running? Start the backend (e.g. node server on port 10000) and try again.");
-      }
-      if (res.status === 501) {
-        throw new Error(msg || "This action is not yet available on the server. Your password was accepted.");
-      }
-      throw new Error(msg || `API error ${res.status}`);
-    }
-    return res.json().catch(() => ({}));
-  }, []);
-
+  // All API calls go to server.js (Node); Node proxies to Python where needed. Never call Python from frontend.
   const handleExecute = useCallback(async ({ password, amount }) => {
-    await callPythonApi("/api/execute", {
-      unique_id: rawTrade?.unique_id,
-      amount: amount?.trim(),
-      password,
+    const url = api("/api/execute");
+    const res = await apiFetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ unique_id: rawTrade?.unique_id, amount: amount?.trim(), password: (password || "").trim() }),
     });
-  }, [rawTrade?.unique_id, callPythonApi]);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data?.message || data?.error || "Execute failed");
+    if (data?.ok === false) throw new Error(data?.message || "Execute failed");
+  }, [rawTrade?.unique_id]);
+  // Flow: Frontend → server.js (Node) → Python. POST to Node /api/end-trade; Node verifies password and proxies to Python.
   const handleEndTrade = useCallback(async ({ password }) => {
-    await callPythonApi("/api/end-trade", {
-      unique_id: rawTrade?.unique_id,
-      password,
+    const rowData = endTradeRowRef.current;
+    const sym = (rowData?.symbol || signalSymbol || (rawTrade?.pair || stripHtml(row.Pair) || "").replace("/", "").trim()).toString().toUpperCase();
+    if (!sym) throw new Error("Symbol not found for this trade");
+    const position_side = (rowData?.positionSide || "BOTH").toString().trim().toUpperCase();
+    const amt = rowData?.positionAmt != null ? parseFloat(rowData.positionAmt) : NaN;
+    const quantity = !Number.isNaN(amt) && amt !== 0 ? Math.abs(amt) : undefined;
+    const url = api("/api/end-trade");
+    const res = await apiFetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        unique_id: rawTrade?.unique_id,
+        symbol: sym,
+        position_side: ["LONG", "SHORT", "BOTH"].includes(position_side) ? position_side : "BOTH",
+        quantity: quantity != null && quantity > 0 ? quantity : undefined,
+        password: (password || "").trim(),
+      }),
     });
-  }, [rawTrade?.unique_id, callPythonApi]);
+    const data = await res.json().catch(() => ({ message: res.statusText }));
+    if (!res.ok) throw new Error(data?.message || data?.error || "Close trade failed");
+    if (data?.ok === false) throw new Error(data?.message || "Close trade failed");
+    endTradeRowRef.current = null;
+    setBinanceDataRefreshKey((k) => k + 1);
+    return { successMessage: data?.message || "Position closed." };
+  }, [rawTrade?.unique_id, rawTrade?.pair, signalSymbol, row.Pair]);
   const handleHedge = useCallback(async ({ password }) => {
-    await callPythonApi("/api/hedge", {
-      unique_id: rawTrade?.unique_id,
-      password,
+    const url = api("/api/hedge");
+    const res = await apiFetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ unique_id: rawTrade?.unique_id, password: (password || "").trim() }),
     });
-  }, [rawTrade?.unique_id, callPythonApi]);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data?.message || data?.error || "Hedge failed");
+    if (data?.ok === false) throw new Error(data?.message || "Hedge failed");
+  }, [rawTrade?.unique_id]);
   const handleSetStopPrice = useCallback(async ({ password, extraValue }) => {
-    await callPythonApi("/api/stop-price", {
-      unique_id: rawTrade?.unique_id,
-      stop_price: extraValue,
-      password,
+    const row = setStopPriceRowRef.current;
+    const symbol = (row?.symbol || signalSymbol || "").toString().trim().toUpperCase();
+    const position_side = (row?.positionSide || "BOTH").toString().toUpperCase();
+    const stop_price = (row?.stopPrice ?? extraValue ?? stopPrice ?? "").toString().trim();
+    if (!symbol) throw new Error("Symbol not found");
+    if (!stop_price) throw new Error("Stop price required");
+    const url = api("/api/stop-price");
+    const res = await apiFetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ symbol, position_side, stop_price, password: (password || "").trim() }),
     });
-  }, [rawTrade?.unique_id, callPythonApi]);
-  const handleAddInvestment = useCallback(async ({ password, amount }) => {
-    await callPythonApi("/api/add-investment", {
-      unique_id: rawTrade?.unique_id,
-      amount: amount?.trim(),
-      password,
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data?.message || data?.error || "Set stop price failed");
+    if (data?.ok === false) throw new Error(data?.message || "Set stop price failed");
+    setStopPriceRowRef.current = null;
+    setBinanceDataRefreshKey((k) => k + 1);
+    return { successMessage: data?.message || "Stop price set." };
+  }, [signalSymbol, stopPrice]);
+  const handleAddInvestment = useCallback(async ({ password }) => {
+    const row = addInvestmentRowRef.current;
+    const symbol = (row?.symbol || signalSymbol || "").toString().trim().toUpperCase();
+    const position_side = (row?.positionSide || "LONG").toString().toUpperCase();
+    const amount = (row?.amount ?? "").toString().trim();
+    if (!symbol) throw new Error("Symbol not found");
+    if (!amount) throw new Error("Amount required");
+    const url = api("/api/add-investment");
+    const res = await apiFetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ symbol, position_side, amount, password: (password || "").trim() }),
     });
-  }, [rawTrade?.unique_id, callPythonApi]);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data?.message || data?.error || "Add investment failed");
+    if (data?.ok === false) throw new Error(data?.message || "Add investment failed");
+    addInvestmentRowRef.current = null;
+    setBinanceDataRefreshKey((k) => k + 1);
+    return { successMessage: data?.message || "Investment added." };
+  }, [signalSymbol]);
+  // Clear Order: Frontend → server.js → Python main_binance.closeOrder(symbol). Cancels all open orders (TP/SL) for the symbol.
   const handleClear = useCallback(async ({ password }) => {
-    const sym = signalSymbol || (rawTrade?.pair || stripHtml(row.Pair) || "").replace("/", "").trim().toUpperCase();
+    const rowSym = clearOrderSymbolRef.current;
+    const sym = (rowSym || signalSymbol || (rawTrade?.pair || stripHtml(row.Pair) || "").replace("/", "").trim()).toString().toUpperCase();
     if (!sym) throw new Error("Symbol not found");
     const url = api("/api/close-order");
     const res = await apiFetch(url, {
@@ -3170,13 +3236,9 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
       body: JSON.stringify({ symbol: sym, password: (password || "").trim() }),
     });
     const data = await res.json().catch(() => ({ message: res.statusText }));
-    if (!res.ok) {
-      throw new Error(data.message || data.error || "Close order failed");
-    }
-    if (data && data.ok === false) {
-      throw new Error(data.message || "Close order failed");
-    }
-    // Success: refresh Binance data so UI shows updated state
+    if (!res.ok) throw new Error(data.message || data.error || "Close order failed");
+    if (data?.ok === false) throw new Error(data.message || "Close order failed");
+    clearOrderSymbolRef.current = null;
     setBinanceDataRefreshKey((k) => k + 1);
     return { successMessage: data.message || "The operation of cancel all open order is done." };
   }, [signalSymbol, rawTrade?.pair, row.Pair]);
@@ -3281,11 +3343,13 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
               </button>
               <button
                 type="button"
+                disabled={hasBinancePositions}
                 onClick={() => setActionModal({ open: true, type: "execute" })}
-                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-500 via-green-500 to-teal-500 hover:from-emerald-600 hover:via-green-600 hover:to-teal-600 text-white text-lg font-bold shadow-lg shadow-emerald-500/40 hover:shadow-emerald-500/50 hover:scale-105 active:scale-100 transition-all min-h-[48px] border-2 border-emerald-400/50"
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-500 via-green-500 to-teal-500 hover:from-emerald-600 hover:via-green-600 hover:to-teal-600 text-white text-lg font-bold shadow-lg shadow-emerald-500/40 hover:shadow-emerald-500/50 hover:scale-105 active:scale-100 transition-all min-h-[48px] border-2 border-emerald-400/50 disabled:opacity-50 disabled:pointer-events-none disabled:hover:scale-100 disabled:cursor-not-allowed"
+                title={hasBinancePositions ? "Disabled: position already exists in Binance Data" : "Execute Trade in Exchange"}
               >
                 <Play size={24} fill="currentColor" />
-                Execute
+                {hasBinancePositions ? "Disabled: position already exists in Binance Data" : "Execute Trade in Exchange"}
               </button>
             </div>
           </div>
@@ -3687,19 +3751,27 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
                                         </button>
                                         <button
                                           type="button"
-                                          onClick={() => setActionModal({ open: true, type: "endTrade" })}
+                                          onClick={() => {
+                                            const symbol = (pos.symbol || signalSymbol || "").toString().toUpperCase();
+                                            const positionSide = pos.positionSide ?? "BOTH";
+                                            const amt = pos.positionAmt != null ? parseFloat(pos.positionAmt) : NaN;
+                                            const quantity = !Number.isNaN(amt) && amt !== 0 ? Math.abs(amt) : 0;
+                                            endTradeRowRef.current = { symbol: pos.symbol || signalSymbol, positionSide, positionAmt: pos.positionAmt };
+                                            setCloseTradePreview({ symbol, action: "Close Trade", positionSide, quantity });
+                                          }}
                                           className="px-2 py-0.5 rounded bg-red-600 hover:bg-red-700 text-white font-semibold"
                                           title="End Trade"
                                         >
-                                          End
+                                          Close Trade
                                         </button>
                                         <button
                                           type="button"
+                                          disabled={exchangePositionData?.positions?.length >= 2}
                                           onClick={() => setActionModal({ open: true, type: "hedge" })}
-                                          className="px-2 py-0.5 rounded bg-amber-600 hover:bg-amber-700 text-white font-semibold"
-                                          title="Hedge"
+                                          className="px-2 py-0.5 rounded bg-amber-600 hover:bg-amber-700 text-white font-semibold disabled:opacity-50 disabled:pointer-events-none disabled:cursor-not-allowed"
+                                          title={exchangePositionData?.positions?.length >= 2 ? "Already hedged (LONG + SHORT)" : "Hedge"}
                                         >
-                                          Hedge
+                                          {exchangePositionData?.positions?.length >= 2 ? "Hedged" : "Hedge"}
                                         </button>
                                         <div className="flex items-center gap-1">
                                           <input
@@ -3710,20 +3782,34 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
                                             onChange={(e) => setStopPrice(e.target.value)}
                                             placeholder="Stop"
                                             autoComplete="off"
-                                            className="border border-gray-400 dark:border-gray-600 rounded px-1 py-0.5 bg-white dark:bg-[#222] w-16"
+                                            className="border border-gray-400 dark:border-gray-600 rounded px-1 py-0.5 bg-white dark:bg-[#222] w-25"
                                           />
                                           <button
                                             type="button"
-                                            onClick={() => setActionModal({ open: true, type: "setStopPrice" })}
-                                            className="px-2 py-0.5 rounded bg-gray-600 hover:bg-gray-700 text-white font-semibold"
+                                            onClick={() => {
+                                              const symbol = (pos.symbol || signalSymbol || "").toString().trim().toUpperCase();
+                                              const positionSide = pos.positionSide ?? "BOTH";
+                                              setStopPricePreview({ action: "Set Stop Price", symbol, positionSide, stopPrice: stopPrice.trim() });
+                                            }}
+                                            className="px-2 py-0.5 rounded bg-red-600 hover:bg-red-700 text-white font-semibold"
                                             title="Set Stop Price"
                                           >
-                                            Set
+                                            Set Stop Price
                                           </button>
                                         </div>
                                         <button
                                           type="button"
-                                          onClick={() => setActionModal({ open: true, type: "addInvestment" })}
+                                          onClick={() => {
+                                            const symbol = (pos.symbol || signalSymbol || "").toString().trim().toUpperCase();
+                                            const positionSide = pos.positionSide ?? "LONG";
+                                            const notional = pos.notional != null ? parseFloat(pos.notional) : NaN;
+                                            const entryPrice = pos.entryPrice != null ? parseFloat(pos.entryPrice) : NaN;
+                                            const amt = pos.positionAmt != null ? parseFloat(pos.positionAmt) : 0;
+                                            const oldQty = Math.abs(amt);
+                                            const oldInvest = (!Number.isNaN(notional) && notional > 0) ? notional : (!Number.isNaN(entryPrice) && entryPrice > 0 && oldQty > 0 ? entryPrice * oldQty : 0);
+                                            setAddInvNewQty(null);
+                                            setAddInvestmentPreview({ symbol, positionSide, oldInvestment: oldInvest, oldQuantity: oldQty, newAmount: "" });
+                                          }}
                                           className="px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
                                           title="Add Investment"
                                         >
@@ -3731,9 +3817,12 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
                                         </button>
                                         <button
                                           type="button"
-                                          onClick={() => setActionModal({ open: true, type: "clear" })}
+                                          onClick={() => {
+                                            clearOrderSymbolRef.current = (pos.symbol || signalSymbol || "").toString().trim().toUpperCase();
+                                            setActionModal({ open: true, type: "clear" });
+                                          }}
                                           className="px-2 py-0.5 rounded bg-slate-600 hover:bg-slate-700 text-white font-semibold"
-                                          title="Clear"
+                                          title="Clear open orders (TP/SL) for this symbol — calls main_binance.closeOrder(symbol)"
                                         >
                                           Clear Order
                                         </button>
@@ -3853,15 +3942,209 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
           onClose={() => setShowLayoutSettings(false)}
         />
       )}
+      {closeTradePreview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => { setCloseTradePreview(null); endTradeRowRef.current = null; }}>
+          <div
+            className="bg-white dark:bg-[#222] rounded-xl p-6 max-w-sm w-full shadow-xl border border-gray-200 dark:border-gray-700"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="font-semibold text-lg mb-4 text-gray-900 dark:text-white">Confirm close position</h3>
+            <div className="space-y-3 mb-6">
+              <div className="flex justify-between gap-4">
+                <span className="text-gray-500 dark:text-gray-400">Action</span>
+                <span className="font-medium text-gray-900 dark:text-white">{closeTradePreview.action}</span>
+              </div>
+              <div className="flex justify-between gap-4">
+                <span className="text-gray-500 dark:text-gray-400">Symbol</span>
+                <span className="font-medium text-gray-900 dark:text-white">{closeTradePreview.symbol}</span>
+              </div>
+              <div className="flex justify-between gap-4">
+                <span className="text-gray-500 dark:text-gray-400">Position side</span>
+                <span className="font-medium text-gray-900 dark:text-white">{closeTradePreview.positionSide}</span>
+              </div>
+              <div className="flex justify-between gap-4">
+                <span className="text-gray-500 dark:text-gray-400">Quantity</span>
+                <span className="font-medium text-gray-900 dark:text-white">{closeTradePreview.quantity}</span>
+              </div>
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button
+                type="button"
+                onClick={() => { setCloseTradePreview(null); endTradeRowRef.current = null; }}
+                className="px-4 py-2 rounded-lg bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-white font-medium hover:bg-gray-300 dark:hover:bg-gray-500"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setActionModal({ open: true, type: "endTrade", positionSide: closeTradePreview.positionSide });
+                  setCloseTradePreview(null);
+                }}
+                className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white font-medium"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {addInvestmentPreview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => { setAddInvestmentPreview(null); setAddInvNewQty(null); }}>
+          <div
+            className="bg-white dark:bg-[#222] rounded-xl p-6 max-w-md w-full shadow-xl border border-gray-200 dark:border-gray-700"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="font-semibold text-lg mb-4 text-gray-900 dark:text-white">Add Investment</h3>
+            <div className="space-y-3 mb-4">
+              <div className="flex justify-between gap-4">
+                <span className="text-gray-500 dark:text-gray-400">Symbol</span>
+                <span className="font-medium text-gray-900 dark:text-white">{addInvestmentPreview.symbol}</span>
+              </div>
+              <div className="flex justify-between gap-4">
+                <span className="text-gray-500 dark:text-gray-400">Position side</span>
+                <span className="font-medium text-gray-900 dark:text-white">{addInvestmentPreview.positionSide}</span>
+              </div>
+              <div className="flex justify-between gap-4">
+                <span className="text-gray-500 dark:text-gray-400">Old investment (USDT)</span>
+                <span className="font-medium text-gray-900 dark:text-white">{(addInvestmentPreview.oldInvestment || 0).toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between gap-4">
+                <span className="text-gray-500 dark:text-gray-400">Old quantity</span>
+                <span className="font-medium text-gray-900 dark:text-white">{(addInvestmentPreview.oldQuantity || 0).toFixed(4)}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-gray-500 dark:text-gray-400 whitespace-nowrap">New investment (USDT)</label>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  step="any"
+                  min="0"
+                  value={addInvestmentPreview.newAmount}
+                  onChange={(e) => setAddInvestmentPreview((p) => p ? { ...p, newAmount: e.target.value.trim() } : null)}
+                  placeholder="0"
+                  autoComplete="off"
+                  className="flex-1 border border-gray-400 dark:border-gray-600 rounded px-2 py-1.5 bg-white dark:bg-[#333] text-gray-900 dark:text-white"
+                />
+              </div>
+              {addInvestmentPreview.newAmount && (
+                <>
+                  <div className="flex justify-between gap-4">
+                    <span className="text-gray-500 dark:text-gray-400">Total investment (USDT)</span>
+                    <span className="font-medium text-emerald-600 dark:text-emerald-400">
+                      {(parseFloat(addInvestmentPreview.oldInvestment || 0) + parseFloat(addInvestmentPreview.newAmount || 0)).toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <span className="text-gray-500 dark:text-gray-400">New quantity</span>
+                    <span className="font-medium text-gray-900 dark:text-white">
+                      {addInvNewQty != null ? addInvNewQty.toFixed(4) : "…"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <span className="text-gray-500 dark:text-gray-400">Total quantity</span>
+                    <span className="font-medium text-emerald-600 dark:text-emerald-400">
+                      {addInvNewQty != null
+                        ? ((addInvestmentPreview.oldQuantity || 0) + addInvNewQty).toFixed(4)
+                        : "…"}
+                    </span>
+                  </div>
+                </>
+              )}
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button
+                type="button"
+                onClick={() => { setAddInvestmentPreview(null); setAddInvNewQty(null); }}
+                className="px-4 py-2 rounded-lg bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-white font-medium hover:bg-gray-300 dark:hover:bg-gray-500"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={!addInvestmentPreview.newAmount || parseFloat(addInvestmentPreview.newAmount) <= 0}
+                onClick={() => {
+                  addInvestmentRowRef.current = {
+                    symbol: addInvestmentPreview.symbol,
+                    positionSide: addInvestmentPreview.positionSide,
+                    amount: addInvestmentPreview.newAmount.trim(),
+                  };
+                  setActionModal({ open: true, type: "addInvestment" });
+                  setAddInvestmentPreview(null);
+                  setAddInvNewQty(null);
+                }}
+                className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {stopPricePreview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setStopPricePreview(null)}>
+          <div
+            className="bg-white dark:bg-[#222] rounded-xl p-6 max-w-sm w-full shadow-xl border border-gray-200 dark:border-gray-700"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="font-semibold text-lg mb-4 text-gray-900 dark:text-white">Confirm set stop price</h3>
+            <div className="space-y-3 mb-6">
+              <div className="flex justify-between gap-4">
+                <span className="text-gray-500 dark:text-gray-400">Action</span>
+                <span className="font-medium text-gray-900 dark:text-white">{stopPricePreview.action}</span>
+              </div>
+              <div className="flex justify-between gap-4">
+                <span className="text-gray-500 dark:text-gray-400">Symbol</span>
+                <span className="font-medium text-gray-900 dark:text-white">{stopPricePreview.symbol}</span>
+              </div>
+              <div className="flex justify-between gap-4">
+                <span className="text-gray-500 dark:text-gray-400">Position side</span>
+                <span className="font-medium text-gray-900 dark:text-white">{stopPricePreview.positionSide}</span>
+              </div>
+              <div className="flex justify-between gap-4">
+                <span className="text-gray-500 dark:text-gray-400">Stop price</span>
+                <span className="font-medium text-gray-900 dark:text-white">{stopPricePreview.stopPrice || "\u2014"}</span>
+              </div>
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button
+                type="button"
+                onClick={() => setStopPricePreview(null)}
+                className="px-4 py-2 rounded-lg bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-white font-medium hover:bg-gray-300 dark:hover:bg-gray-500"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={!stopPricePreview.stopPrice}
+                onClick={() => {
+                  setStopPriceRowRef.current = { symbol: stopPricePreview.symbol, positionSide: stopPricePreview.positionSide, stopPrice: stopPricePreview.stopPrice };
+                  setActionModal({ open: true, type: "setStopPrice", stopPrice: stopPricePreview.stopPrice });
+                  setStopPricePreview(null);
+                }}
+                className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <ConfirmActionModal
         open={actionModal.open}
-        onClose={() => setActionModal({ open: false, type: null })}
+        onClose={() => {
+          if (actionModal.type === "endTrade") endTradeRowRef.current = null;
+          if (actionModal.type === "setStopPrice") setStopPriceRowRef.current = null;
+          if (actionModal.type === "addInvestment") addInvestmentRowRef.current = null;
+          if (actionModal.type === "clear") clearOrderSymbolRef.current = null;
+          setActionModal({ open: false, type: null });
+        }}
         actionType={actionModal.type}
-        requireAmount={actionModal.type === "execute" || actionModal.type === "addInvestment"}
+        requireAmount={actionModal.type === "execute"}
         amountLabel={actionModal.type === "execute" ? "Amount" : "Investment amount"}
         amountPlaceholder={actionModal.type === "execute" ? "0" : "0"}
-        extraLabel={actionModal.type === "setStopPrice" ? "Stop price" : actionModal.type === "autoPilot" ? "Action" : undefined}
-        extraValue={actionModal.type === "setStopPrice" ? stopPrice : actionModal.type === "autoPilot" ? (actionModal.autoEnable ? "enable" : "disable") : undefined}
+        extraLabel={actionModal.type === "setStopPrice" ? "Stop price" : actionModal.type === "autoPilot" ? "Action" : actionModal.type === "endTrade" ? "Position side" : undefined}
+        extraValue={actionModal.type === "setStopPrice" ? (actionModal.stopPrice ?? stopPrice) : actionModal.type === "autoPilot" ? (actionModal.autoEnable ? "enable" : "disable") : actionModal.type === "endTrade" ? (actionModal.positionSide || "BOTH") : undefined}
         onConfirm={actionModal.type ? getConfirmHandler(actionModal.type) : undefined}
       />
     </div>

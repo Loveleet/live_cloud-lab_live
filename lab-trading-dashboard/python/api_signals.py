@@ -78,13 +78,18 @@ import os
 # Add utils directory to path to import main_binance
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'utils'))
 try:
-    from utils.main_binance import getAllOpenPosition, getOpenPosition, closeOrder
+    from utils.main_binance import getAllOpenPosition, getOpenPosition, closeOrder, close_hedge_position, setHedgeStopLoss, HedgeModePlaceOrder, getQuantity, client
     from utils.Final_olab_database import olab_sync_exchange_trades
 except ImportError as e:
-    _log(f"Could not import getAllOpenPosition, getOpenPosition, closeOrder or olab_sync_exchange_trades: {e}", "WARN")
+    _log(f"Could not import main_binance or Final_olab_database: {e}", "WARN")
     getAllOpenPosition = None
     getOpenPosition = None
     closeOrder = None
+    close_hedge_position = None
+    setHedgeStopLoss = None
+    HedgeModePlaceOrder = None
+    getQuantity = None
+    client = None
     olab_sync_exchange_trades = None
 
 app = Flask(__name__)
@@ -277,21 +282,197 @@ def close_order():
     if not symbol:
         return jsonify({"ok": False, "message": "symbol required"}), 400
 
-    try:
-        result = closeOrder(symbol)
-        # Binance returns {"code": 200, "msg": "The operation of cancel all open order is done."}
-        msg = (result.get("msg") if isinstance(result, dict) and result else None) or f"Open orders for {symbol} cleared"
-        _log(f"close-order | {symbol}: OK | {msg}")
-        return jsonify({
-            "ok": True,
-            "symbol": symbol,
-            "message": msg,
-            "orders": result if isinstance(result, (list, dict)) else [],
-        })
-    except Exception as e:
-        error_msg = str(e)
+    result = closeOrder(symbol)
+    if isinstance(result, dict) and result.get("ok") is False:
+        error_msg = result.get("message", "Unknown error")
         _log(f"close-order | {symbol}: Error: {error_msg}", "ERROR")
         return jsonify({"ok": False, "message": error_msg}), 500
+    # Binance returns {"code": 200, "msg": "The operation of cancel all open order is done."} or list
+    msg = (result.get("msg") if isinstance(result, dict) and result else None) or f"Open orders for {symbol} cleared"
+    _log(f"close-order | {symbol}: OK | {msg}")
+    return jsonify({
+        "ok": True,
+        "symbol": symbol,
+        "message": msg,
+        "orders": result if isinstance(result, (list, dict)) else [],
+    })
+
+
+@app.route("/api/stop-price", methods=["POST", "OPTIONS"])
+def stop_price():
+    """
+    Set STOP_MARKET for a hedge position via main_binance.setHedgeStopLoss(symbol, stop_price, side, posSide).
+    Body: { "symbol": "BTCUSDT", "position_side": "LONG"|"SHORT"|"BOTH", "stop_price": "12345.67" }.
+    """
+    if request.method == "OPTIONS":
+        return "", 204
+    if setHedgeStopLoss is None:
+        return jsonify({"ok": False, "message": "setHedgeStopLoss not available"}), 500
+    data = request.get_json(silent=True) or {}
+    symbol = (data.get("symbol") or "").strip().upper()
+    position_side = (data.get("position_side") or "BOTH").strip().upper()
+    stop_price_val = data.get("stop_price")
+    if not symbol:
+        return jsonify({"ok": False, "message": "symbol required"}), 400
+    if stop_price_val is None or stop_price_val == "":
+        return jsonify({"ok": False, "message": "stop_price required"}), 400
+    try:
+        stop_price_float = float(stop_price_val)
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "message": "stop_price must be a number"}), 400
+    if position_side not in ("LONG", "SHORT", "BOTH"):
+        return jsonify({"ok": False, "message": "position_side must be LONG, SHORT, or BOTH"}), 400
+    if position_side == "LONG":
+        result = setHedgeStopLoss(symbol, stop_price_float, "SELL", "LONG")
+    elif position_side == "SHORT":
+        result = setHedgeStopLoss(symbol, stop_price_float, "BUY", "SHORT")
+    else:
+        result = setHedgeStopLoss(symbol, stop_price_float, "SELL", "LONG")
+        if isinstance(result, dict) and result.get("ok") is False:
+            error_msg = result.get("message", "Unknown error")
+            _log(f"stop-price | {symbol} LONG: Error: {error_msg}", "ERROR")
+            return jsonify({"ok": False, "message": error_msg}), 500
+        result = setHedgeStopLoss(symbol, stop_price_float, "BUY", "SHORT")
+    if isinstance(result, dict) and result.get("ok") is False:
+        error_msg = result.get("message", "Unknown error")
+        _log(f"stop-price | {symbol}: Error: {error_msg}", "ERROR")
+        return jsonify({"ok": False, "message": error_msg}), 500
+    _log(f"stop-price | {symbol} {position_side} @ {stop_price_float}: OK")
+    return jsonify({"ok": True, "symbol": symbol, "position_side": position_side, "message": "Stop price set"})
+
+
+@app.route("/api/quantity-preview", methods=["GET", "POST", "OPTIONS"])
+def quantity_preview():
+    """
+    Compute order quantity for a given invest amount via main_binance.getQuantity(symbol, invest).
+    Query or body: symbol, invest. Returns { quantity, plquantity, lastplquantity }.
+    No auth required (read-only calculation).
+    """
+    if request.method == "OPTIONS":
+        return "", 204
+    if getQuantity is None:
+        return jsonify({"ok": False, "message": "getQuantity not available"}), 500
+    data = request.get_json(silent=True) or {}
+    symbol = (data.get("symbol") or request.args.get("symbol") or "").strip().upper()
+    invest_val = data.get("invest") if "invest" in data else request.args.get("invest")
+    if not symbol:
+        return jsonify({"ok": False, "message": "symbol required"}), 400
+    if invest_val is None or invest_val == "":
+        return jsonify({"ok": False, "message": "invest required"}), 400
+    try:
+        invest_float = float(invest_val)
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "message": "invest must be a number"}), 400
+    if invest_float <= 0:
+        return jsonify({"ok": False, "message": "invest must be positive"}), 400
+    quantity, plquantity, lastplquantity = getQuantity(symbol, invest_float)
+    return jsonify({
+        "ok": True,
+        "symbol": symbol,
+        "invest": invest_float,
+        "quantity": quantity,
+        "plquantity": plquantity,
+        "lastplquantity": lastplquantity,
+    })
+
+
+@app.route("/api/add-investment", methods=["POST", "OPTIONS"])
+def add_investment():
+    """
+    Add investment to an existing hedge position via getQuantity + HedgeModePlaceOrder.
+    Body: { symbol, position_side (LONG|SHORT), amount (new investment in USDT), password }.
+    Flow: getQuantity(symbol, amount) -> quantity, then HedgeModePlaceOrder(symbol, side, posSide, qty).
+    """
+    if request.method == "OPTIONS":
+        return "", 204
+    if HedgeModePlaceOrder is None or getQuantity is None:
+        return jsonify({"ok": False, "message": "HedgeModePlaceOrder/getQuantity not available"}), 500
+    data = request.get_json(silent=True) or {}
+    symbol = (data.get("symbol") or "").strip().upper()
+    position_side = (data.get("position_side") or "LONG").strip().upper()
+    amount_val = data.get("amount")
+    if not symbol:
+        return jsonify({"ok": False, "message": "symbol required"}), 400
+    if amount_val is None or amount_val == "":
+        return jsonify({"ok": False, "message": "amount required"}), 400
+    try:
+        amount_float = float(amount_val)
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "message": "amount must be a number"}), 400
+    if amount_float <= 0:
+        return jsonify({"ok": False, "message": "amount must be positive"}), 400
+    if position_side not in ("LONG", "SHORT"):
+        return jsonify({"ok": False, "message": "position_side must be LONG or SHORT"}), 400
+    side = "BUY" if position_side == "LONG" else "SELL"
+    quantity, _, _ = getQuantity(symbol, amount_float)
+    if quantity is None or quantity <= 0:
+        return jsonify({"ok": False, "message": "Could not compute quantity for this amount"}), 400
+    result = HedgeModePlaceOrder(symbol, side, position_side, quantity)
+    if isinstance(result, dict) and result.get("ok") is False:
+        error_msg = result.get("message", "Unknown error")
+        _log(f"add-investment | {symbol}: Error: {error_msg}", "ERROR")
+        return jsonify({"ok": False, "message": error_msg}), 500
+    _log(f"add-investment | {symbol} {position_side} +{amount_float} USDT qty={quantity}: OK")
+    return jsonify({
+        "ok": True,
+        "symbol": symbol,
+        "position_side": position_side,
+        "amount": amount_float,
+        "quantity": quantity,
+        "message": "Investment added",
+        "order": result,
+    })
+
+
+@app.route("/api/end-trade", methods=["POST", "OPTIONS"])
+def end_trade():
+    """
+    Close hedge position(s) via main_binance.close_hedge_position(symbol, position_side, quantity).
+    Body: { "symbol": "BTCUSDT", "position_side": "LONG"|"SHORT"|"BOTH", "quantity": optional number }.
+    """
+    if request.method == "OPTIONS":
+        return "", 204
+    data = request.get_json(silent=True) or {}
+    symbol = (data.get("symbol") or request.args.get("symbol") or "").strip().upper()
+    position_side = (data.get("position_side") or "BOTH").strip().upper()
+    quantity = data.get("quantity")
+
+    print(f"end-trade | {symbol} {position_side} qty={quantity}")
+    return jsonify({"ok": False, "message": "symbol required"}), 400
+    # if quantity is not None:
+    #     try:
+    #         quantity = float(quantity)
+    #         if quantity <= 0:
+    #             quantity = None
+    #     except (TypeError, ValueError):
+    #         quantity = None
+    # if not symbol:
+    #     return jsonify({"ok": False, "message": "symbol required"}), 400
+    # if position_side not in ("LONG", "SHORT", "BOTH"):
+    #     return jsonify({"ok": False, "message": "position_side must be LONG, SHORT, or BOTH"}), 400
+    # if close_hedge_position is None:
+    #     return jsonify({"ok": False, "message": "close_hedge_position not available"}), 500
+    # try:
+    #     results = []
+    #     if position_side == "BOTH":
+    #         for side in ("LONG", "SHORT"):
+    #             out = close_hedge_position(symbol, side, quantity)
+    #             results.append({"positionSide": side, "result": out})
+    #     else:
+    #         out = close_hedge_position(symbol, position_side, quantity)
+    #         results.append({"positionSide": position_side, "result": out})
+    #     _log(f"end-trade | {symbol} {position_side} qty={quantity}: {results}")
+    #     return jsonify({
+    #         "ok": True,
+    #         "symbol": symbol,
+    #         "position_side": position_side,
+    #         "message": f"Closed {position_side} position(s) for {symbol}",
+    #         "closed": results,
+    #     })
+    # except Exception as e:
+    #     error_msg = str(e)
+    #     _log(f"end-trade | {symbol}: Error: {error_msg}", "ERROR")
+    #     return jsonify({"ok": False, "message": error_msg}), 500
 
 
 if __name__ == "__main__":

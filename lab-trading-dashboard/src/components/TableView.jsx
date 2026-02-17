@@ -38,7 +38,7 @@ import moment from "moment";
 
 import * as XLSX from "xlsx";
 import { Home, BarChart, FileText, Menu, ChevronDown, ChevronRight } from "lucide-react";
-import { apiSignals, apiSignalsFetch } from "../config";
+import { api, apiFetch } from "../config";
 // Remove: Users, X, Plus, Space, ChartGridView (not used in main view)
 
 
@@ -761,7 +761,7 @@ useEffect(() => {
       const next = {};
       for (const sym of symbols) {
         try {
-          const res = await apiSignalsFetch(`/api/open-position?symbol=${encodeURIComponent(sym)}`);
+          const res = await apiFetch(api(`/api/open-position?symbol=${encodeURIComponent(sym)}`));
           const data = await res.json().catch(() => ({}));
           next[sym] = data;
         } catch {
