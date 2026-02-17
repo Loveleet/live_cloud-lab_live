@@ -2702,22 +2702,28 @@ const LiveTradeViewPage = () => {
       >
         {darkMode ? '🌞' : '🌙'}
       </button>
-      {/* Main content container: filter/grid and table together */}
+      {/* Main content container: top signals (scrollable) + bottom list area */}
       <div style={{ 
-        padding: '0 64px 0 32px', // Removed top and bottom padding completely
+        padding: '0 64px 0 32px',
         position: 'relative', 
         display: 'flex', 
         flexDirection: 'column', 
         height: '100vh',
-        boxSizing: 'border-box'
+        boxSizing: 'border-box',
+        overflow: 'hidden',
       }}>
-      {/* Signals from Python API: 5m, 15m, 1h, 4h */}
+      {/* Signals from Python API: 5m, 15m, 1h, 4h — constrained height so list stays visible below */}
       {signalsData?.ok && signalsData?.intervals && (
+        <div style={{
+          flex: '0 0 auto',
+          maxHeight: '38vh',
+          overflowY: 'auto',
+          marginBottom: 12,
+        }}>
         <div style={{
           display: 'flex',
           flexWrap: 'wrap',
           gap: 12,
-          marginBottom: 16,
           padding: 12,
           background: darkMode ? '#1e293b' : '#f1f5f9',
           borderRadius: 8,
@@ -2779,7 +2785,10 @@ const LiveTradeViewPage = () => {
             );
           })}
         </div>
+        </div>
       )}
+      {/* Bottom section: summary + filters + events list — takes remaining space */}
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <LiveTradeListViewComponent
         uid={uid}
         interval={interval}
@@ -2791,8 +2800,8 @@ const LiveTradeViewPage = () => {
         darkMode={darkMode}
         // Add more props as needed
       />
-        {/* Table: attractive styling similar to main dashboard */}
-        <div style={{ margin: `${filterTableSpacing}px 0 0 0` }}> {/* Dynamic spacing based on state */}
+        {/* Table: attractive styling similar to main dashboard — flex so list stays visible and scrolls */}
+        <div style={{ margin: `${filterTableSpacing}px 0 0 0`, flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <div style={{ 
             color: darkMode ? '#fff' : '#222', 
             margin: '8px 0 16px 0',
@@ -3437,6 +3446,7 @@ const LiveTradeViewPage = () => {
             )}
           </div>
         </div>
+      </div>
       </div>
     </div>
   );
