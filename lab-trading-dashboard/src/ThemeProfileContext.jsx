@@ -35,12 +35,16 @@ export function ThemeProfileProvider({ children, isLoggedIn, onSettingsLoaded, t
 
   const fetchActiveProfile = useCallback(async () => {
     const url = api("/api/active-theme-profile");
+    log("fetchActiveProfile: requesting", url);
     const res = await fetch(url, { credentials: "include" });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      log("fetchActiveProfile: res not ok", res.status);
+      return null;
+    }
     const data = await res.json().catch(() => ({}));
     const active = data?.activeProfile || null;
+    log("fetchActiveProfile: server returned", JSON.stringify(data), "-> active", active?.name, "id=", active?.id);
     setActiveProfileState(active);
-    log("active profile", active?.name, "id=", active?.id);
     return active;
   }, []);
 
@@ -70,20 +74,21 @@ export function ThemeProfileProvider({ children, isLoggedIn, onSettingsLoaded, t
   const setActiveProfileId = useCallback(
     async (themeProfileId) => {
       const url = api("/api/active-theme-profile");
+      log("setActiveProfileId: POST", themeProfileId, "profile name=", profiles.find((p) => p.id === themeProfileId)?.name);
       const res = await fetch(url, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ theme_profile_id: themeProfileId }),
       });
+      const responseData = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        log("set active profile failed", res.status, err);
+        log("setActiveProfileId: failed", res.status, responseData);
         return false;
       }
+      log("setActiveProfileId: server ok", responseData);
       const active = themeProfileId != null ? profiles.find((p) => p.id === themeProfileId) || { id: themeProfileId, name: "?" } : null;
       setActiveProfileState(active);
-      log("set active profile", active?.name, "id=", themeProfileId);
       return true;
     },
     [profiles]
