@@ -1737,7 +1737,7 @@ useEffect(() => {
       >
       {/* Global bar: Profile, Sound, Theme — fixed height so it never overlaps page buttons; content scrolls below */}
       <div className="flex flex-col min-h-screen">
-        <header className="flex-shrink-0 h-12 flex items-center justify-end gap-2 px-4 border-b border-gray-200 dark:border-gray-700 shadow-sm bg-[#f5f6fa] dark:bg-black z-50">
+        <header className="flex-shrink-0 h-12 flex items-center justify-end gap-2 px-4 border-b border-gray-200 dark:border-gray-700 shadow-sm bg-[#f5f6fa] dark:bg-black ">
           <ProfilePanel buttonClassName="px-3 py-1.5 rounded-full bg-white/80 dark:bg-gray-800/80 shadow hover:scale-105 transition-all text-sm font-semibold text-gray-700 dark:text-gray-200" />
           <button
             onClick={() => setIsSoundOpen(true)}
