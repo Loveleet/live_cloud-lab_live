@@ -170,18 +170,19 @@ export function ThemeProfileProvider({ children, isLoggedIn, onSettingsLoaded, t
     return { ok: true };
   }, [activeProfile?.id, profiles, setActiveProfileId]);
 
-  // When active profile is set or changes, fetch settings and notify parent so it can apply to state
+  // When active profile is set or changes, fetch settings for THAT profile and apply (pass id so we don't use stale closure)
   useEffect(() => {
     if (!isLoggedIn || !activeProfile?.id || typeof onSettingsLoaded !== "function") return;
+    const profileId = activeProfile.id;
     let cancelled = false;
-    refetchSettings().then(({ settings }) => {
+    refetchSettings(profileId).then(({ settings }) => {
       if (!cancelled) {
-        log("apply server settings to app", settings.length, "keys");
+        log("apply server settings to app", settings.length, "keys", "profileId=", profileId);
         onSettingsLoaded(settings);
       }
     });
     return () => { cancelled = true; };
-  }, [isLoggedIn, activeProfile?.id, onSettingsLoaded]);
+  }, [isLoggedIn, activeProfile?.id, onSettingsLoaded, refetchSettings]);
 
   const value = {
     profiles,
