@@ -1735,6 +1735,31 @@ useEffect(() => {
         onSettingsLoaded={applyServerSettings}
         themeProfileRef={themeProfileRef}
       >
+      {/* Global bar: Profile, Sound, Theme — shown on every screen */}
+      <header className="sticky top-0 z-50 flex items-center justify-end gap-2 px-4 py-2 border-b border-gray-200 dark:border-gray-700 shadow-sm bg-[#f5f6fa] dark:bg-black">
+        <ProfilePanel buttonClassName="px-3 py-2 rounded-full bg-white/80 dark:bg-gray-800/80 shadow hover:scale-105 transition-all text-sm font-semibold text-gray-700 dark:text-gray-200" />
+        <button
+          onClick={() => setIsSoundOpen(true)}
+          className="px-2 py-1 rounded-full bg-white/80 dark:bg-gray-800/80 shadow hover:scale-105 transition-all text-sm font-semibold"
+          title="Sound & New trades settings"
+        >
+          🔊 Sound
+        </button>
+        <button
+          onClick={() => {
+            setDarkMode((dm) => {
+              const next = !dm;
+              themeProfileRef.current?.saveSetting("theme", next ? "dark" : "light");
+              return next;
+            });
+          }}
+          className="p-2 rounded-full bg-white/80 dark:bg-gray-800/80 shadow hover:scale-110 transition-all"
+          title={darkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
+          style={{ fontSize: 24 }}
+        >
+          {darkMode ? "🌞" : "🌙"}
+        </button>
+      </header>
       {showStayLoggedInPrompt && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" aria-labelledby="stay-logged-in-title">
           <div className="bg-white dark:bg-[#222] rounded-xl p-6 max-w-sm w-full shadow-xl border border-gray-200 dark:border-gray-700 mx-4">
@@ -1797,31 +1822,8 @@ useEffect(() => {
                   initialAutoOn={true}
                 />
               </div>
-              {/* Right-side controls: Profile, Sound, Theme — grouped so Profile is on the right side */}
-              <div className="absolute right-4 top-3 z-20 flex items-center gap-2">
-                <ProfilePanel buttonClassName="px-3 py-2 rounded-full bg-white/80 dark:bg-gray-800/80 shadow hover:scale-105 transition-all text-sm font-semibold text-gray-700 dark:text-gray-200" />
-                <button
-                  onClick={() => setIsSoundOpen(true)}
-                  className="px-2 py-1 rounded-full bg-white/80 dark:bg-gray-800/80 shadow hover:scale-105 transition-all text-sm font-semibold"
-                  title="Sound & New trades settings"
-                >
-                  🔊 Sound
-                </button>
-                <button
-                  onClick={() => {
-                    setDarkMode((dm) => {
-                      const next = !dm;
-                      themeProfileRef.current?.saveSetting("theme", next ? "dark" : "light");
-                      return next;
-                    });
-                  }}
-                  className="p-2 rounded-full bg-white/80 dark:bg-gray-800/80 shadow hover:scale-110 transition-all"
-                  title={darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-                  style={{ fontSize: 24 }}
-                >
-                  {darkMode ? '🌞' : '🌙'}
-                </button>
-              </div>
+              {/* Right side: empty (Profile, Sound, Theme are in the global bar above) */}
+              <div className="absolute right-4 top-3 z-20" />
               {/* SVG Graph Background (animated) */}
               <AnimatedGraphBackground width={400} height={48} opacity={0.4} />
               {/* LAB text */}
