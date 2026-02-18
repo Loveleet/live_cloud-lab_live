@@ -1735,31 +1735,33 @@ useEffect(() => {
         onSettingsLoaded={applyServerSettings}
         themeProfileRef={themeProfileRef}
       >
-      {/* Global bar: Profile, Sound, Theme — shown on every screen */}
-      <header className="sticky top-0 z-50 flex items-center justify-end gap-2 px-4 py-2 border-b border-gray-200 dark:border-gray-700 shadow-sm bg-[#f5f6fa] dark:bg-black">
-        <ProfilePanel buttonClassName="px-3 py-2 rounded-full bg-white/80 dark:bg-gray-800/80 shadow hover:scale-105 transition-all text-sm font-semibold text-gray-700 dark:text-gray-200" />
-        <button
-          onClick={() => setIsSoundOpen(true)}
-          className="px-2 py-1 rounded-full bg-white/80 dark:bg-gray-800/80 shadow hover:scale-105 transition-all text-sm font-semibold"
-          title="Sound & New trades settings"
-        >
-          🔊 Sound
-        </button>
-        <button
-          onClick={() => {
-            setDarkMode((dm) => {
-              const next = !dm;
-              themeProfileRef.current?.saveSetting("theme", next ? "dark" : "light");
-              return next;
-            });
-          }}
-          className="p-2 rounded-full bg-white/80 dark:bg-gray-800/80 shadow hover:scale-110 transition-all"
-          title={darkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
-          style={{ fontSize: 24 }}
-        >
-          {darkMode ? "🌞" : "🌙"}
-        </button>
-      </header>
+      {/* Global bar: Profile, Sound, Theme — fixed height so it never overlaps page buttons; content scrolls below */}
+      <div className="flex flex-col min-h-screen">
+        <header className="flex-shrink-0 h-12 flex items-center justify-end gap-2 px-4 border-b border-gray-200 dark:border-gray-700 shadow-sm bg-[#f5f6fa] dark:bg-black z-50">
+          <ProfilePanel buttonClassName="px-3 py-1.5 rounded-full bg-white/80 dark:bg-gray-800/80 shadow hover:scale-105 transition-all text-sm font-semibold text-gray-700 dark:text-gray-200" />
+          <button
+            onClick={() => setIsSoundOpen(true)}
+            className="px-2 py-1 rounded-full bg-white/80 dark:bg-gray-800/80 shadow hover:scale-105 transition-all text-sm font-semibold"
+            title="Sound & New trades settings"
+          >
+            🔊 Sound
+          </button>
+          <button
+            onClick={() => {
+              setDarkMode((dm) => {
+                const next = !dm;
+                themeProfileRef.current?.saveSetting("theme", next ? "dark" : "light");
+                return next;
+              });
+            }}
+            className="p-1.5 rounded-full bg-white/80 dark:bg-gray-800/80 shadow hover:scale-110 transition-all"
+            title={darkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
+            style={{ fontSize: 22 }}
+          >
+            {darkMode ? "🌞" : "🌙"}
+          </button>
+        </header>
+        <main className="flex-1 min-h-0 flex flex-col overflow-auto">
       {showStayLoggedInPrompt && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" aria-labelledby="stay-logged-in-title">
           <div className="bg-white dark:bg-[#222] rounded-xl p-6 max-w-sm w-full shadow-xl border border-gray-200 dark:border-gray-700 mx-4">
@@ -2323,6 +2325,8 @@ useEffect(() => {
           </>
         } />
       </Routes>
+        </main>
+      </div>
       </ThemeProfileProvider>
       </AuthContext.Provider>
   );
