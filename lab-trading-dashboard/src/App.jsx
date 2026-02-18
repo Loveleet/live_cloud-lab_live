@@ -1555,11 +1555,23 @@ useEffect(() => {
     themeProfileRef.current.saveSetting(key, str);
     try {
       if (key === "theme") localStorage.setItem("theme", value);
-      else if (key === "soundSettings") localStorage.setItem("soundSettings", value);
+      else if (key === "soundSettings") localStorage.setItem("soundSettings", typeof value === "string" ? value : JSON.stringify(value));
       else localStorage.setItem(key, str);
     } catch (_) {}
   }, []);
 
+  useEffect(() => {
+    if (!settingsAppliedOnceRef.current || !themeProfileRef.current) return;
+    syncToServerAndLocal("theme", darkMode ? "dark" : "light");
+  }, [darkMode, syncToServerAndLocal]);
+  useEffect(() => {
+    if (!settingsAppliedOnceRef.current || !themeProfileRef.current) return;
+    syncToServerAndLocal("layoutOption", layoutOption);
+  }, [layoutOption, syncToServerAndLocal]);
+  useEffect(() => {
+    if (!settingsAppliedOnceRef.current || !themeProfileRef.current) return;
+    syncToServerAndLocal("fontSizeLevel", fontSizeLevel);
+  }, [fontSizeLevel, syncToServerAndLocal]);
   useEffect(() => {
     if (!settingsAppliedOnceRef.current || !themeProfileRef.current) return;
     syncToServerAndLocal("liveFilter", liveFilter);
