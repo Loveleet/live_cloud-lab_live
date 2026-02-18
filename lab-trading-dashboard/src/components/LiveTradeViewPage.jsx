@@ -2090,9 +2090,9 @@ const LiveTradeViewPage = () => {
       className={darkMode ? 'dark' : ''}
       style={{
         height: '100vh',
-        overflowY: 'scroll',
-        overflowX: 'hidden',
-        WebkitOverflowScrolling: 'touch',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
         background: darkMode ? '#181a20' : '#f7f7fa',
       }}
     >
@@ -2737,7 +2737,14 @@ const LiveTradeViewPage = () => {
       >
         {darkMode ? '🌞' : '🌙'}
       </button>
-      {/* Main content: scrollable area */}
+      {/* Scrollable area: flex 1 + minHeight 0 so it gets remaining height and scrolls */}
+      <div style={{ 
+        flex: 1,
+        minHeight: 0,
+        overflowY: 'auto',
+        overflowX: 'hidden',
+        WebkitOverflowScrolling: 'touch',
+      }}>
       <div style={{ 
         padding: '0 64px 0 32px',
         position: 'relative', 
@@ -2848,11 +2855,11 @@ const LiveTradeViewPage = () => {
         </>
         )}
       </div>
-      {/* Table section — no flex growth so no gap between Export row and table */}
+      {/* Table section — tight spacing so no gap between Export row and table */}
         <div style={{ margin: `${filterTableSpacing}px 0 0 0`, flex: '0 0 auto', display: 'flex', flexDirection: 'column' }}>
           <div style={{ 
             color: darkMode ? '#fff' : '#222', 
-            margin: '8px 0 16px 0',
+            margin: '4px 0 6px 0',
             fontSize: '14px',
             fontWeight: '500',
             display: 'flex',
@@ -3076,7 +3083,7 @@ const LiveTradeViewPage = () => {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            margin: '16px 0 8px 0',
+            margin: '6px 0 4px 0',
             paddingLeft: 8,
             paddingRight: 8,
           }}>
@@ -3493,6 +3500,7 @@ const LiveTradeViewPage = () => {
             )}
           </div>
         </div>
+      </div>
       </div>
     </div>
   );
