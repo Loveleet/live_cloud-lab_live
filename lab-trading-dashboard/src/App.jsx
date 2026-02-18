@@ -1395,42 +1395,223 @@ useEffect(() => {
     }
   }, [darkMode]);
 
-  // Apply server-backed settings when theme profile loads or user switches profile (so changing profile visibly updates the page)
+  // Helper: parse value from server (JSONB can return object or string)
+  const parseSetting = useCallback((v) => {
+    if (v == null) return undefined;
+    if (typeof v === "string") {
+      try {
+        const parsed = JSON.parse(v);
+        return parsed;
+      } catch {
+        return v;
+      }
+    }
+    return v;
+  }, []);
+
+  // Apply server-backed settings when theme profile loads or user switches profile (server = source of truth; sync copy to localStorage)
   const applyServerSettings = useCallback((settings) => {
     if (!Array.isArray(settings)) return;
     const map = {};
     settings.forEach((s) => { if (s && s.key != null) map[s.key] = s.value; });
+    const toBool = (x) => x === true || x === "true" || x === "1";
     // Theme, font, layout
-    setDarkMode(map.theme !== undefined ? map.theme === "dark" : (window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ?? true));
+    const themeDark = map.theme !== undefined ? map.theme === "dark" : (window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ?? true);
+    setDarkMode(themeDark);
+    try { localStorage.setItem("theme", themeDark ? "dark" : "light"); } catch (_) {}
     const fontNum = map.fontSizeLevel !== undefined ? Number(map.fontSizeLevel) : NaN;
-    if (!Number.isNaN(fontNum)) setFontSizeLevel(fontNum);
+    if (!Number.isNaN(fontNum)) {
+      setFontSizeLevel(fontNum);
+      try { localStorage.setItem("fontSizeLevel", String(fontNum)); } catch (_) {}
+    }
     const layoutNum = map.layoutOption !== undefined ? Number(map.layoutOption) : NaN;
-    if (!Number.isNaN(layoutNum)) setLayoutOption(layoutNum);
-    // Live filter (true/false checkboxes) and related — so switching profile updates filters
+    if (!Number.isNaN(layoutNum)) {
+      setLayoutOption(layoutNum);
+      try { localStorage.setItem("layoutOption", String(layoutNum)); } catch (_) {}
+    }
+    // Live filter and related
     if (map.liveFilter !== undefined) {
       try {
-        const v = typeof map.liveFilter === "string" ? JSON.parse(map.liveFilter) : map.liveFilter;
-        if (v && typeof v === "object" && ("true" in v || "false" in v)) setLiveFilter(v);
+        const v = parseSetting(map.liveFilter);
+        if (v && typeof v === "object" && ("true" in v || "false" in v)) {
+          setLiveFilter(v);
+          localStorage.setItem("liveFilter", JSON.stringify(v));
+        }
       } catch (_) {}
     }
-    if (map.liveRadioMode !== undefined) setLiveRadioMode(map.liveRadioMode === true || map.liveRadioMode === "true" || map.liveRadioMode === "1");
-    if (map.filterVisible !== undefined) setFilterVisible(map.filterVisible === true || map.filterVisible === "true" || map.filterVisible === "1");
+    if (map.liveRadioMode !== undefined) {
+      setLiveRadioMode(toBool(map.liveRadioMode));
+      try { localStorage.setItem("liveRadioMode", toBool(map.liveRadioMode) ? "true" : "false"); } catch (_) {}
+    }
+    if (map.filterVisible !== undefined) {
+      setFilterVisible(toBool(map.filterVisible));
+      try { localStorage.setItem("filterVisible", toBool(map.filterVisible) ? "true" : "false"); } catch (_) {}
+    }
+    // Machine/signal toggles
+    if (map.machineRadioMode !== undefined) {
+      setMachineRadioMode(toBool(map.machineRadioMode));
+      try { localStorage.setItem("machineRadioMode", JSON.stringify(toBool(map.machineRadioMode))); } catch (_) {}
+    }
+    if (map.machineToggleAll !== undefined) {
+      setMachineToggleAll(toBool(map.machineToggleAll));
+      try { localStorage.setItem("machineToggleAll", JSON.stringify(toBool(map.machineToggleAll))); } catch (_) {}
+    }
+    // Selected signals (merge with defaults so new keys appear)
+    const defaultSignals = {
+      "2POLE_IN5LOOP": true, "IMACD": true, "2POLE_Direct_Signal": true,
+      "HIGHEST SWING HIGH": true, "LOWEST SWING LOW": true, "NORMAL SWING HIGH": true, "NORMAL SWING LOW": true,
+      "ProGap": true, "CrossOver": true, "Spike": true, "Kicker": true,
+    };
+    if (map.selectedSignals !== undefined) {
+      try {
+        const v = parseSetting(map.selectedSignals);
+        if (v && typeof v === "object") {
+          const merged = { ...defaultSignals, ...v };
+          setSelectedSignals(merged);
+          const allSelected = Object.values(merged).every((val) => val === true);
+          setSignalToggleAll(!allSelected);
+          localStorage.setItem("selectedSignals", JSON.stringify(merged));
+        }
+      } catch (_) {}
+    }
+    // Selected machines (object)
+    if (map.selectedMachines !== undefined) {
+      try {
+        const v = parseSetting(map.selectedMachines);
+        if (v && typeof v === "object") {
+          setSelectedMachines(v);
+          localStorage.setItem("selectedMachines", JSON.stringify(v));
+        }
+      } catch (_) {}
+    }
+    // Selected intervals
+    const defaultIntervals = { "1m": true, "3m": true, "5m": true, "15m": true, "30m": true, "1h": true, "2h": true, "4h": true };
+    if (map.selectedIntervals !== undefined) {
+      try {
+        const v = parseSetting(map.selectedIntervals);
+        if (v && typeof v === "object") {
+          const merged = { ...defaultIntervals, ...v };
+          setSelectedIntervals(merged);
+          localStorage.setItem("selectedIntervals", JSON.stringify(merged));
+        }
+      } catch (_) {}
+    }
+    // Selected actions
+    if (map.selectedActions !== undefined) {
+      try {
+        const v = parseSetting(map.selectedActions);
+        if (v && typeof v === "object") {
+          const merged = { BUY: true, SELL: true, ...v };
+          setSelectedActions(merged);
+          localStorage.setItem("selectedActions", JSON.stringify(merged));
+        }
+      } catch (_) {}
+    }
+    // Date range
+    if (map.fromDate !== undefined && map.fromDate != null && map.fromDate !== "") {
+      const d = moment(map.fromDate);
+      if (d.isValid()) {
+        setFromDate(d);
+        try { localStorage.setItem("fromDate", d.toISOString()); } catch (_) {}
+      }
+    }
+    if (map.toDate !== undefined && map.toDate != null && map.toDate !== "") {
+      const d = moment(map.toDate);
+      if (d.isValid()) {
+        setToDate(d);
+        try { localStorage.setItem("toDate", d.toISOString()); } catch (_) {}
+      }
+    }
+    // Chart settings
+    if (map.chartSettings !== undefined) {
+      try {
+        const v = parseSetting(map.chartSettings);
+        if (v && typeof v === "object") {
+          setChartSettings((prev) => ({ layout: 3, showRSI: true, showVolume: true, ...prev, ...v }));
+          try { localStorage.setItem("chartSettings", JSON.stringify({ ...v })); } catch (_) {}
+        }
+      } catch (_) {}
+    }
+    // Sound settings
+    if (map.soundSettings !== undefined) {
+      try {
+        const v = parseSetting(map.soundSettings);
+        if (v && typeof v === "object") {
+          setSoundSettings((prev) => ({
+            enabled: false, volume: 0.7, mode: "tts", announceActions: { BUY: true, SELL: true }, announceSignals: {}, audioUrls: { BUY: "", SELL: "" }, newTradeWindowHours: 4,
+            ...prev, ...v,
+          }));
+          try { localStorage.setItem("soundSettings", JSON.stringify(v)); } catch (_) {}
+        }
+      } catch (_) {}
+    }
     settingsAppliedOnceRef.current = true;
+  }, [parseSetting]);
+
+  // Persist all settings to server (per profile) when they change; also keep localStorage in sync
+  const syncToServerAndLocal = useCallback((key, value) => {
+    if (!themeProfileRef.current) return;
+    const str = typeof value === "string" ? value : JSON.stringify(value);
+    themeProfileRef.current.saveSetting(key, str);
+    try {
+      if (key === "theme") localStorage.setItem("theme", value);
+      else if (key === "soundSettings") localStorage.setItem("soundSettings", value);
+      else localStorage.setItem(key, str);
+    } catch (_) {}
   }, []);
 
-  // Persist live filter and related to server (per profile) so switching profile restores them
   useEffect(() => {
     if (!settingsAppliedOnceRef.current || !themeProfileRef.current) return;
-    themeProfileRef.current.saveSetting("liveFilter", JSON.stringify(liveFilter));
-  }, [liveFilter]);
+    syncToServerAndLocal("liveFilter", liveFilter);
+  }, [liveFilter, syncToServerAndLocal]);
   useEffect(() => {
     if (!settingsAppliedOnceRef.current || !themeProfileRef.current) return;
-    themeProfileRef.current.saveSetting("liveRadioMode", liveRadioMode ? "true" : "false");
-  }, [liveRadioMode]);
+    syncToServerAndLocal("liveRadioMode", liveRadioMode ? "true" : "false");
+  }, [liveRadioMode, syncToServerAndLocal]);
   useEffect(() => {
     if (!settingsAppliedOnceRef.current || !themeProfileRef.current) return;
-    themeProfileRef.current.saveSetting("filterVisible", filterVisible ? "true" : "false");
-  }, [filterVisible]);
+    syncToServerAndLocal("filterVisible", filterVisible ? "true" : "false");
+  }, [filterVisible, syncToServerAndLocal]);
+  useEffect(() => {
+    if (!settingsAppliedOnceRef.current || !themeProfileRef.current) return;
+    syncToServerAndLocal("machineRadioMode", machineRadioMode);
+  }, [machineRadioMode, syncToServerAndLocal]);
+  useEffect(() => {
+    if (!settingsAppliedOnceRef.current || !themeProfileRef.current) return;
+    syncToServerAndLocal("machineToggleAll", machineToggleAll);
+  }, [machineToggleAll, syncToServerAndLocal]);
+  useEffect(() => {
+    if (!settingsAppliedOnceRef.current || !themeProfileRef.current) return;
+    syncToServerAndLocal("selectedSignals", selectedSignals);
+  }, [selectedSignals, syncToServerAndLocal]);
+  useEffect(() => {
+    if (!settingsAppliedOnceRef.current || !themeProfileRef.current) return;
+    syncToServerAndLocal("selectedMachines", selectedMachines);
+  }, [selectedMachines, syncToServerAndLocal]);
+  useEffect(() => {
+    if (!settingsAppliedOnceRef.current || !themeProfileRef.current) return;
+    syncToServerAndLocal("selectedIntervals", selectedIntervals);
+  }, [selectedIntervals, syncToServerAndLocal]);
+  useEffect(() => {
+    if (!settingsAppliedOnceRef.current || !themeProfileRef.current) return;
+    syncToServerAndLocal("selectedActions", selectedActions);
+  }, [selectedActions, syncToServerAndLocal]);
+  useEffect(() => {
+    if (!settingsAppliedOnceRef.current || !themeProfileRef.current) return;
+    syncToServerAndLocal("chartSettings", chartSettings);
+  }, [chartSettings, syncToServerAndLocal]);
+  useEffect(() => {
+    if (!settingsAppliedOnceRef.current || !themeProfileRef.current) return;
+    syncToServerAndLocal("soundSettings", soundSettings);
+  }, [soundSettings, syncToServerAndLocal]);
+  useEffect(() => {
+    if (!settingsAppliedOnceRef.current || !themeProfileRef.current) return;
+    if (fromDate) syncToServerAndLocal("fromDate", fromDate.toISOString());
+  }, [fromDate, syncToServerAndLocal]);
+  useEffect(() => {
+    if (!settingsAppliedOnceRef.current || !themeProfileRef.current) return;
+    if (toDate) syncToServerAndLocal("toDate", toDate.toISOString());
+  }, [toDate, syncToServerAndLocal]);
 
   // Sync dark mode with localStorage changes (e.g., from reports or another tab)
   useEffect(() => {
