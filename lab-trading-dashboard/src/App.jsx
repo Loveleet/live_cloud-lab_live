@@ -1409,12 +1409,62 @@ useEffect(() => {
     return v;
   }, []);
 
+  // Defaults for each setting (so when we switch profile we reset to these, then apply only what that profile has saved)
+  const DEFAULT_SIGNALS = useMemo(() => ({
+    "2POLE_IN5LOOP": true, "IMACD": true, "2POLE_Direct_Signal": true,
+    "HIGHEST SWING HIGH": true, "LOWEST SWING LOW": true, "NORMAL SWING HIGH": true, "NORMAL SWING LOW": true,
+    "ProGap": true, "CrossOver": true, "Spike": true, "Kicker": true,
+  }), []);
+  const DEFAULT_INTERVALS = useMemo(() => ({ "1m": true, "3m": true, "5m": true, "15m": true, "30m": true, "1h": true, "2h": true, "4h": true }), []);
+  const DEFAULT_LIVE_FILTER = useMemo(() => ({ true: true, false: true }), []);
+  const DEFAULT_CHART = useMemo(() => ({ layout: 3, showRSI: true, showVolume: true }), []);
+  const DEFAULT_SOUND = useMemo(() => ({
+    enabled: false, volume: 0.7, mode: "tts", announceActions: { BUY: true, SELL: true }, announceSignals: {}, audioUrls: { BUY: "", SELL: "" }, newTradeWindowHours: 4,
+  }), []);
+
   // Apply server-backed settings when theme profile loads or user switches profile (server = source of truth; sync copy to localStorage)
   const applyServerSettings = useCallback((settings) => {
     if (!Array.isArray(settings)) return;
     const map = {};
     settings.forEach((s) => { if (s && s.key != null) map[s.key] = s.value; });
     const toBool = (x) => x === true || x === "true" || x === "1";
+
+    // Reset all synced state to defaults first, so switching to another profile (e.g. Anish) shows that profile's values, not the previous one's
+    setDarkMode(window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ?? true);
+    setFontSizeLevel(8);
+    setLayoutOption(3);
+    setLiveFilter(DEFAULT_LIVE_FILTER);
+    setLiveRadioMode(false);
+    setFilterVisible(true);
+    setMachineRadioMode(false);
+    setMachineToggleAll(true);
+    setSelectedSignals(DEFAULT_SIGNALS);
+    setSignalToggleAll(true);
+    setSelectedMachines({});
+    setSelectedIntervals(DEFAULT_INTERVALS);
+    setSelectedActions({ BUY: true, SELL: true });
+    setFromDate(null);
+    setToDate(null);
+    setChartSettings(DEFAULT_CHART);
+    setSoundSettings(DEFAULT_SOUND);
+    try {
+      localStorage.setItem("theme", "dark");
+      localStorage.setItem("fontSizeLevel", "8");
+      localStorage.setItem("layoutOption", "3");
+      localStorage.setItem("liveFilter", JSON.stringify(DEFAULT_LIVE_FILTER));
+      localStorage.setItem("liveRadioMode", "false");
+      localStorage.setItem("filterVisible", "true");
+      localStorage.setItem("machineRadioMode", "false");
+      localStorage.setItem("machineToggleAll", "true");
+      localStorage.setItem("selectedSignals", JSON.stringify(DEFAULT_SIGNALS));
+      localStorage.setItem("selectedMachines", "{}");
+      localStorage.setItem("selectedIntervals", JSON.stringify(DEFAULT_INTERVALS));
+      localStorage.setItem("selectedActions", JSON.stringify({ BUY: true, SELL: true }));
+      localStorage.setItem("chartSettings", JSON.stringify(DEFAULT_CHART));
+      localStorage.setItem("soundSettings", JSON.stringify(DEFAULT_SOUND));
+    } catch (_) {}
+
+    // Now apply whatever this profile has saved (overrides defaults)
     // Theme, font, layout
     const themeDark = map.theme !== undefined ? map.theme === "dark" : (window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ?? true);
     setDarkMode(themeDark);
@@ -1457,16 +1507,11 @@ useEffect(() => {
       try { localStorage.setItem("machineToggleAll", JSON.stringify(toBool(map.machineToggleAll))); } catch (_) {}
     }
     // Selected signals (merge with defaults so new keys appear)
-    const defaultSignals = {
-      "2POLE_IN5LOOP": true, "IMACD": true, "2POLE_Direct_Signal": true,
-      "HIGHEST SWING HIGH": true, "LOWEST SWING LOW": true, "NORMAL SWING HIGH": true, "NORMAL SWING LOW": true,
-      "ProGap": true, "CrossOver": true, "Spike": true, "Kicker": true,
-    };
     if (map.selectedSignals !== undefined) {
       try {
         const v = parseSetting(map.selectedSignals);
         if (v && typeof v === "object") {
-          const merged = { ...defaultSignals, ...v };
+          const merged = { ...DEFAULT_SIGNALS, ...v };
           setSelectedSignals(merged);
           const allSelected = Object.values(merged).every((val) => val === true);
           setSignalToggleAll(!allSelected);
@@ -1485,12 +1530,11 @@ useEffect(() => {
       } catch (_) {}
     }
     // Selected intervals
-    const defaultIntervals = { "1m": true, "3m": true, "5m": true, "15m": true, "30m": true, "1h": true, "2h": true, "4h": true };
     if (map.selectedIntervals !== undefined) {
       try {
         const v = parseSetting(map.selectedIntervals);
         if (v && typeof v === "object") {
-          const merged = { ...defaultIntervals, ...v };
+          const merged = { ...DEFAULT_INTERVALS, ...v };
           setSelectedIntervals(merged);
           localStorage.setItem("selectedIntervals", JSON.stringify(merged));
         }
@@ -1548,7 +1592,7 @@ useEffect(() => {
       } catch (_) {}
     }
     settingsAppliedOnceRef.current = true;
-  }, [parseSetting]);
+  }, [parseSetting, DEFAULT_SIGNALS, DEFAULT_INTERVALS, DEFAULT_LIVE_FILTER, DEFAULT_CHART, DEFAULT_SOUND]);
 
   // Persist all settings to server when logged in (per profile), and always keep a copy in localStorage
   const syncToServerAndLocal = useCallback((key, value) => {
