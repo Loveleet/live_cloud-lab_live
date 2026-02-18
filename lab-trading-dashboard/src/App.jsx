@@ -1429,8 +1429,7 @@ useEffect(() => {
     settings.forEach((s) => { if (s && s.key != null) map[s.key] = s.value; });
     const toBool = (x) => x === true || x === "true" || x === "1";
 
-    // Reset all synced state to defaults first, so switching to another profile (e.g. Anish) shows that profile's values, not the previous one's
-    setDarkMode(window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ?? true);
+    // Reset all synced state to defaults first (except theme — we only set theme from server so we don't overwrite user's choice with system preference)
     setFontSizeLevel(8);
     setLayoutOption(3);
     setLiveFilter(DEFAULT_LIVE_FILTER);
@@ -1448,7 +1447,6 @@ useEffect(() => {
     setChartSettings(DEFAULT_CHART);
     setSoundSettings(DEFAULT_SOUND);
     try {
-      localStorage.setItem("theme", "dark");
       localStorage.setItem("fontSizeLevel", "8");
       localStorage.setItem("layoutOption", "3");
       localStorage.setItem("liveFilter", JSON.stringify(DEFAULT_LIVE_FILTER));
@@ -1465,10 +1463,13 @@ useEffect(() => {
     } catch (_) {}
 
     // Now apply whatever this profile has saved (overrides defaults)
-    // Theme, font, layout
-    const themeDark = map.theme !== undefined ? map.theme === "dark" : (window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ?? true);
-    setDarkMode(themeDark);
-    try { localStorage.setItem("theme", themeDark ? "dark" : "light"); } catch (_) {}
+    // Theme: only apply when server sent one — never overwrite with system preference so user's dark choice sticks
+    if (map.theme !== undefined) {
+      const themeDark = map.theme === "dark";
+      setDarkMode(themeDark);
+      try { localStorage.setItem("theme", themeDark ? "dark" : "light"); } catch (_) {}
+    }
+    // Font, layout
     const fontNum = map.fontSizeLevel !== undefined ? Number(map.fontSizeLevel) : NaN;
     if (!Number.isNaN(fontNum)) {
       setFontSizeLevel(fontNum);
