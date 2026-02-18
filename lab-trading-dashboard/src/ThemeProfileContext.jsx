@@ -55,9 +55,10 @@ export function ThemeProfileProvider({ children, isLoggedIn, onSettingsLoaded, t
     Promise.all([fetchProfiles(), fetchActiveProfile()])
       .then(([list, active]) => {
         if (cancelled) return;
+        // Do not overwrite server's saved active profile: server already returns last selected (or defaults to first on first visit)
         if (!active && list.length > 0) {
-          log("no active profile; defaulting to first:", list[0].name);
-          setActiveProfileId(list[0].id);
+          log("no active profile from server; defaulting to first in state only (server will persist on first GET)");
+          setActiveProfileState(list[0]);
         }
       })
       .finally(() => {

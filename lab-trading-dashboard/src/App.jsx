@@ -1394,14 +1394,17 @@ useEffect(() => {
     }
   }, [darkMode]);
 
-  // Apply server-backed settings when theme profile loads or user switches profile (debug: check Network + console [Theme])
+  // Apply server-backed settings when theme profile loads or user switches profile (so changing profile visibly updates the page)
   const applyServerSettings = useCallback((settings) => {
     if (!Array.isArray(settings)) return;
     const map = {};
     settings.forEach((s) => { if (s && s.key != null) map[s.key] = s.value; });
-    if (map.theme !== undefined) setDarkMode(map.theme === "dark");
-    if (map.fontSizeLevel !== undefined) { const n = Number(map.fontSizeLevel); if (!Number.isNaN(n)) setFontSizeLevel(n); }
-    if (map.layoutOption !== undefined) { const n = Number(map.layoutOption); if (!Number.isNaN(n)) setLayoutOption(n); }
+    // Always apply theme so switching profile shows a change (use default if not set)
+    setDarkMode(map.theme !== undefined ? map.theme === "dark" : (window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ?? true));
+    const fontNum = map.fontSizeLevel !== undefined ? Number(map.fontSizeLevel) : NaN;
+    if (!Number.isNaN(fontNum)) setFontSizeLevel(fontNum);
+    const layoutNum = map.layoutOption !== undefined ? Number(map.layoutOption) : NaN;
+    if (!Number.isNaN(layoutNum)) setLayoutOption(layoutNum);
   }, []);
 
   // Sync dark mode with localStorage changes (e.g., from reports or another tab)
@@ -1530,29 +1533,31 @@ useEffect(() => {
                   initialAutoOn={true}
                 />
               </div>
-              {/* Light/Dark mode toggle button */}
-              <button
-                onClick={() => {
-                  setDarkMode((dm) => {
-                    const next = !dm;
-                    themeProfileRef.current?.saveSetting("theme", next ? "dark" : "light");
-                    return next;
-                  });
-                }}
-                className="absolute right-8 top-3 z-20 p-2 rounded-full bg-white/80 dark:bg-gray-800/80 shadow hover:scale-110 transition-all"
-                title={darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-                style={{ fontSize: 24 }}
-              >
-                {darkMode ? '🌞' : '🌙'}
-              </button>
-              <ProfilePanel buttonClassName="absolute right-36 top-3 z-20 px-3 py-2 rounded-full bg-white/80 dark:bg-gray-800/80 shadow hover:scale-105 transition-all text-sm font-semibold text-gray-700 dark:text-gray-200" />
-              <button
-                onClick={() => setIsSoundOpen(true)}
-                className="absolute right-24 top-3 z-20 px-2 py-1 rounded-full bg-white/80 dark:bg-gray-800/80 shadow hover:scale-105 transition-all text-sm font-semibold"
-                title="Sound & New trades settings"
-              >
-                🔊 Sound
-              </button>
+              {/* Right-side controls: Profile, Sound, Theme — grouped so Profile is on the right side */}
+              <div className="absolute right-4 top-3 z-20 flex items-center gap-2">
+                <ProfilePanel buttonClassName="px-3 py-2 rounded-full bg-white/80 dark:bg-gray-800/80 shadow hover:scale-105 transition-all text-sm font-semibold text-gray-700 dark:text-gray-200" />
+                <button
+                  onClick={() => setIsSoundOpen(true)}
+                  className="px-2 py-1 rounded-full bg-white/80 dark:bg-gray-800/80 shadow hover:scale-105 transition-all text-sm font-semibold"
+                  title="Sound & New trades settings"
+                >
+                  🔊 Sound
+                </button>
+                <button
+                  onClick={() => {
+                    setDarkMode((dm) => {
+                      const next = !dm;
+                      themeProfileRef.current?.saveSetting("theme", next ? "dark" : "light");
+                      return next;
+                    });
+                  }}
+                  className="p-2 rounded-full bg-white/80 dark:bg-gray-800/80 shadow hover:scale-110 transition-all"
+                  title={darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+                  style={{ fontSize: 24 }}
+                >
+                  {darkMode ? '🌞' : '🌙'}
+                </button>
+              </div>
               {/* SVG Graph Background (animated) */}
               <AnimatedGraphBackground width={400} height={48} opacity={0.4} />
               {/* LAB text */}
