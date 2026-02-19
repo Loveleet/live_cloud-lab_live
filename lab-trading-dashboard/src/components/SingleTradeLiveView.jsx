@@ -88,6 +88,11 @@ const BINANCE_COLUMNS_VISIBILITY_KEY = "singleTradeLiveView_binanceColumnsVisibi
 const SECTION_IDS = ["information", "binanceData", "chart"];
 const SECTION_LABELS = { information: "Information", binanceData: "Binance Data", chart: "Chart" };
 
+const DEBUG_UI_SETTINGS = true; // set false to disable profile/settings debug logs
+function debugLog(...args) {
+  if (DEBUG_UI_SETTINGS && typeof console !== "undefined") console.log("[LiveView UI Settings]", ...args);
+}
+
 const INTERVALS = ["5m", "15m", "1h", "4h"];
 // Display order: current first, then prev, then prior (API summary is [prior, prev, current] = index 0,1,2)
 const ROW_LABELS = ["current_row", "prev row", "prior row"];
@@ -2761,6 +2766,8 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
   });
   // Store fetched settings with the profile id they belong to (in state so apply effect re-runs when new data arrives)
   const [serverUiSettingsForProfile, setServerUiSettingsForProfile] = useState(null); // { profileId, settings } | null
+  // Only allow POST after we've applied this profile's settings (stops overwriting new profile with old profile's state when switching)
+  const lastAppliedProfileIdRef = useRef(null);
   const orderedKeys = fieldOrder && fieldOrder.length
     ? [...fieldOrder.filter((k) => allKeys.includes(k)), ...allKeys.filter((k) => !fieldOrder.includes(k))]
     : allKeys;
@@ -2828,14 +2835,22 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
     return "intervalWise";
   });
 
-  // Persist a single UI setting to cloud and localStorage (per current theme profile). Only POST when we have a profile so we never store under null and lose it when switching back.
+  // Persist a single UI setting to cloud and localStorage (per current theme profile). Only POST when we have applied this profile's settings (so switching profile doesn't overwrite the new profile with old state).
   const saveUiSetting = useCallback((key, value) => {
     try {
       localStorage.setItem(key, typeof value === "string" ? value : JSON.stringify(value));
     } catch {}
-    if (activeProfileId == null) return;
+    if (activeProfileId == null) {
+      debugLog("save SKIP (no profile)", key);
+      return;
+    }
+    if (lastAppliedProfileIdRef.current !== activeProfileId) {
+      debugLog("save SKIP (profile not applied yet, would overwrite)", "key=", key, "activeProfileId=", activeProfileId, "lastApplied=", lastAppliedProfileIdRef.current);
+      return;
+    }
     const url = api("/api/ui-settings");
     const body = { key, value, theme_profile_id: activeProfileId };
+    debugLog("save POST", key, "theme_profile_id=", activeProfileId);
     fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -2848,9 +2863,7 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
         return res.json();
       })
       .then(() => {
-        if (key === BINANCE_COLUMNS_ORDER_KEY || key === BINANCE_COLUMNS_VISIBILITY_KEY) {
-          console.debug("[UI Settings] Saved to server:", key);
-        }
+        if (DEBUG_UI_SETTINGS && (key === SECTION_ORDER_KEY || key === INFO_SPLIT_KEY)) debugLog("save OK", key);
       })
       .catch((err) => {
         console.warn("[UI Settings] Save failed for", key, ":", err?.message || err);
@@ -2870,6 +2883,7 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
   useEffect(() => {
     let cancelled = false;
     const profileIdForFetch = activeProfileId;
+    debugLog("load FETCH start", "profileId=", profileIdForFetch);
     const q = profileIdForFetch != null ? `?theme_profile_id=${profileIdForFetch}` : "";
     const url = api("/api/ui-settings") + q;
     fetch(url)
@@ -2895,21 +2909,34 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
             map[s.key] = val;
           }
         });
-        if (list.length > 0) console.debug("[UI Settings] Loaded from server (profileId=" + profileIdForFetch + "):", Object.keys(map));
+        const keys = Object.keys(map);
+        debugLog("load FETCH done", "profileId=", profileIdForFetch, "keys=", keys.length, keys.slice(0, 8));
         setServerUiSettingsForProfile(profileIdForFetch != null ? { profileId: profileIdForFetch, settings: map } : { profileId: null, settings: map });
       })
       .catch((err) => {
         console.warn("[UI Settings] Load error:", err?.message || err);
-        if (!cancelled) setServerUiSettingsForProfile(profileIdForFetch != null ? { profileId: profileIdForFetch, settings: {} } : { profileId: null, settings: {} });
+        if (!cancelled) {
+          debugLog("load FETCH error", "profileId=", profileIdForFetch);
+          setServerUiSettingsForProfile(profileIdForFetch != null ? { profileId: profileIdForFetch, settings: {} } : { profileId: null, settings: {} });
+        }
       });
     return () => { cancelled = true; };
   }, [activeProfileId]);
 
   // Apply server settings when we have data for the current profile (state holds { profileId, settings } so every profile switch that fetches new data triggers apply)
   useEffect(() => {
-    if (serverUiSettingsForProfile == null) return;
-    if (serverUiSettingsForProfile.profileId !== activeProfileId) return;
+    if (serverUiSettingsForProfile == null) {
+      debugLog("apply SKIP", "no data");
+      return;
+    }
+    if (serverUiSettingsForProfile.profileId !== activeProfileId) {
+      debugLog("apply SKIP", "dataFor=", serverUiSettingsForProfile.profileId, "currentProfile=", activeProfileId);
+      return;
+    }
+    lastAppliedProfileIdRef.current = activeProfileId;
     const serverUiSettings = serverUiSettingsForProfile.settings;
+    const keys = Object.keys(serverUiSettings);
+    debugLog("apply OK", "profileId=", activeProfileId, "keys=", keys.length, keys.slice(0, 6));
     const sectionArr = serverUiSettings[SECTION_ORDER_KEY];
     if (Array.isArray(sectionArr) && sectionArr.length === SECTION_IDS.length && SECTION_IDS.every((id) => sectionArr.includes(id))) {
       setSectionOrder(sectionArr);
