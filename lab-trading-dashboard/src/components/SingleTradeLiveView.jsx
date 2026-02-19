@@ -2828,14 +2828,14 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
     return "intervalWise";
   });
 
-  // Persist a single UI setting to cloud and localStorage (per current theme profile)
+  // Persist a single UI setting to cloud and localStorage (per current theme profile). Only POST when we have a profile so we never store under null and lose it when switching back.
   const saveUiSetting = useCallback((key, value) => {
     try {
       localStorage.setItem(key, typeof value === "string" ? value : JSON.stringify(value));
     } catch {}
+    if (activeProfileId == null) return;
     const url = api("/api/ui-settings");
-    const body = { key, value };
-    if (activeProfileId != null) body.theme_profile_id = activeProfileId;
+    const body = { key, value, theme_profile_id: activeProfileId };
     fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
