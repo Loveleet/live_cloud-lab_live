@@ -478,31 +478,41 @@ function InfoFieldsModal({ orderedKeys, allKeys, visibleKeys, setVisibleKeys, se
 function SectionOrderModal({ sectionOrder, setSectionOrder, onClose }) {
   const [dragIndex, setDragIndex] = useState(null);
   const [overIndex, setOverIndex] = useState(null);
+  const dragIndexRef = useRef(null);
 
   const handleDragStart = (e, index) => {
+    dragIndexRef.current = index;
     setDragIndex(index);
     e.dataTransfer.effectAllowed = "move";
     e.dataTransfer.setData("text/plain", String(index));
+    try {
+      if (e.dataTransfer.setDragImage && e.currentTarget) {
+        e.dataTransfer.setDragImage(e.currentTarget, 0, 0);
+      }
+    } catch (_) {}
   };
   const handleDragOver = (e, index) => {
     e.preventDefault();
+    e.stopPropagation();
     e.dataTransfer.dropEffect = "move";
     setOverIndex(index);
   };
   const handleDragLeave = () => setOverIndex(null);
   const handleDrop = (e, toIndex) => {
     e.preventDefault();
+    e.stopPropagation();
     setOverIndex(null);
-    if (dragIndex == null) return;
-    const fromIndex = dragIndex;
+    const fromIndex = dragIndexRef.current ?? dragIndex;
+    dragIndexRef.current = null;
     setDragIndex(null);
-    if (fromIndex === toIndex) return;
+    if (fromIndex == null || fromIndex === toIndex) return;
     const next = [...sectionOrder];
     const [removed] = next.splice(fromIndex, 1);
     next.splice(toIndex, 0, removed);
     setSectionOrder(next);
   };
   const handleDragEnd = () => {
+    dragIndexRef.current = null;
     setDragIndex(null);
     setOverIndex(null);
   };
@@ -512,12 +522,16 @@ function SectionOrderModal({ sectionOrder, setSectionOrder, onClose }) {
       <div
         className="bg-white dark:bg-[#222] rounded-xl p-6 max-w-md w-full shadow-xl"
         onClick={(e) => e.stopPropagation()}
+        onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = "move"; }}
       >
         <h3 className="font-semibold text-lg mb-2">Section order</h3>
         <p className="text-sm text-gray-500 dark:text-white/90 mb-4">
           Drag to set the order of sections (top to bottom).
         </p>
-        <ul className="space-y-1">
+        <ul
+          className="space-y-1"
+          onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = "move"; }}
+        >
           {sectionOrder.map((id, index) => (
             <li
               key={id}
@@ -532,7 +546,39 @@ function SectionOrderModal({ sectionOrder, setSectionOrder, onClose }) {
               } ${dragIndex === index ? "opacity-60" : ""}`}
             >
               <span className="text-gray-400 dark:text-white/70 select-none" title="Drag to reorder">⋮⋮</span>
-              <span className="font-medium">{SECTION_LABELS[id] || id}</span>
+              <span className="font-medium flex-1">{SECTION_LABELS[id] || id}</span>
+              <span className="flex gap-0.5">
+                <button
+                  type="button"
+                  disabled={index === 0}
+                  onClick={() => {
+                    if (index === 0) return;
+                    const next = [...sectionOrder];
+                    [next[index - 1], next[index]] = [next[index], next[index - 1]];
+                    setSectionOrder(next);
+                  }}
+                  className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                  title="Move up"
+                  aria-label="Move up"
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  disabled={index === sectionOrder.length - 1}
+                  onClick={() => {
+                    if (index >= sectionOrder.length - 1) return;
+                    const next = [...sectionOrder];
+                    [next[index], next[index + 1]] = [next[index + 1], next[index]];
+                    setSectionOrder(next);
+                  }}
+                  className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                  title="Move down"
+                  aria-label="Move down"
+                >
+                  ↓
+                </button>
+              </span>
             </li>
           ))}
         </ul>
