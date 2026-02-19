@@ -2866,18 +2866,6 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
     saveUiSetting(SIGNALS_VIEW_MODE_KEY, signalsTableViewMode);
   }, [signalsTableViewMode, saveUiSetting]);
 
-  // When profile first becomes available (null → id), push current layout from localStorage to server so early changes aren't lost
-  const prevProfileIdRef = useRef(activeProfileId);
-  useEffect(() => {
-    const wasNull = prevProfileIdRef.current == null;
-    prevProfileIdRef.current = activeProfileId;
-    if (activeProfileId != null && wasNull) {
-      saveUiSetting(SECTION_ORDER_KEY, sectionOrder);
-      saveUiSetting(INFO_SPLIT_KEY, infoSplitPercent);
-      saveUiSetting(SIGNALS_VIEW_MODE_KEY, signalsTableViewMode);
-    }
-  }, [activeProfileId]); // eslint-disable-line react-hooks/exhaustive-deps
-
   // Load UI settings from cloud for current theme profile; refetch when profile changes so layout/settings follow the selected profile
   useEffect(() => {
     let cancelled = false;
