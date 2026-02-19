@@ -1,18 +1,26 @@
 /* (intentionally left minimal; global styles now live in index.css) */
 
-/* High‑visibility blinking for signal cells (no scale to avoid scrollbar jump) */
+/* Interactive blink + glow for signal alert cells (no scale to avoid scrollbar jump) */
 @keyframes lab-alert-cell-pulse {
-  0% {
-    box-shadow: 0 0 0 0 var(--lab-alert-shadow, rgba(250, 204, 21, 0.9));
+  0%, 100% {
+    box-shadow: 0 0 0 0 var(--lab-alert-shadow, rgba(250, 204, 21, 0.5));
     background-color: var(--lab-alert-bg, #f97316);
+    opacity: 1;
+    outline: 2px solid transparent;
+    outline-offset: 1px;
+  }
+  15% {
+    opacity: 0.92;
   }
   50% {
-    box-shadow: 0 0 12px 3px var(--lab-alert-shadow, rgba(250, 204, 21, 1));
-    background-color: var(--lab-alert-bg-peak, #ef4444);
+    box-shadow: 0 0 16px 5px var(--lab-alert-shadow, rgba(250, 204, 21, 1));
+    background-color: var(--lab-alert-bg-peak, #f97316);
+    opacity: 1;
+    outline: 2px solid var(--lab-alert-bg, #f97316);
+    outline-offset: 1px;
   }
-  100% {
-    box-shadow: 0 0 0 0 var(--lab-alert-shadow, rgba(250, 204, 21, 0.9));
-    background-color: var(--lab-alert-bg, #f97316);
+  85% {
+    opacity: 0.94;
   }
 }
 
@@ -21,7 +29,7 @@
   z-index: 1;
   color: #000;
   font-weight: 700;
-  animation: lab-alert-cell-pulse 0.8s ease-in-out infinite;
+  animation: lab-alert-cell-pulse 1.4s ease-in-out infinite;
   min-width: 3rem;
   min-height: 1.5rem;
   box-sizing: border-box;
