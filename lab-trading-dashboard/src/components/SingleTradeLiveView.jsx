@@ -2595,7 +2595,8 @@ function LiveTradeChartSection({
 export default function SingleTradeLiveView({ formattedRow: initialFormattedRow, rawTrade: initialRawTrade }) {
   const navigate = useNavigate();
   const themeProfile = useContext(ThemeProfileContext);
-  const activeProfileId = themeProfile?.activeThemeProfileId ?? themeProfile?.activeProfile?.id;
+  const activeProfileIdRaw = themeProfile?.activeThemeProfileId ?? themeProfile?.activeProfile?.id;
+  const activeProfileId = activeProfileIdRaw != null ? Number(activeProfileIdRaw) : null;
   const [formattedRow, setFormattedRow] = useState(initialFormattedRow || {});
   const [rawTrade, setRawTrade] = useState(initialRawTrade ?? null);
   // When rawTrade exists, use formatTradeData to show ALL fields from the trade (same as TableView)
@@ -2844,8 +2845,9 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
       debugLog("save SKIP (no profile)", key);
       return;
     }
-    if (lastAppliedProfileIdRef.current !== activeProfileId) {
-      debugLog("save SKIP (profile not applied yet, would overwrite)", "key=", key, "activeProfileId=", activeProfileId, "lastApplied=", lastAppliedProfileIdRef.current);
+    const lastApplied = lastAppliedProfileIdRef.current != null ? Number(lastAppliedProfileIdRef.current) : null;
+    if (lastApplied !== activeProfileId) {
+      debugLog("save SKIP (profile not applied yet, would overwrite)", "key=", key, "activeProfileId=", activeProfileId, "lastApplied=", lastApplied);
       return;
     }
     const url = api("/api/ui-settings");
@@ -2911,13 +2913,15 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
         });
         const keys = Object.keys(map);
         debugLog("load FETCH done", "profileId=", profileIdForFetch, "keys=", keys.length, keys.slice(0, 8));
-        setServerUiSettingsForProfile(profileIdForFetch != null ? { profileId: profileIdForFetch, settings: map } : { profileId: null, settings: map });
+        const pid = profileIdForFetch != null ? Number(profileIdForFetch) : null;
+        setServerUiSettingsForProfile(pid != null ? { profileId: pid, settings: map } : { profileId: null, settings: map });
       })
       .catch((err) => {
         console.warn("[UI Settings] Load error:", err?.message || err);
         if (!cancelled) {
           debugLog("load FETCH error", "profileId=", profileIdForFetch);
-          setServerUiSettingsForProfile(profileIdForFetch != null ? { profileId: profileIdForFetch, settings: {} } : { profileId: null, settings: {} });
+          const pid = profileIdForFetch != null ? Number(profileIdForFetch) : null;
+          setServerUiSettingsForProfile(pid != null ? { profileId: pid, settings: {} } : { profileId: null, settings: {} });
         }
       });
     return () => { cancelled = true; };
@@ -2929,8 +2933,9 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
       debugLog("apply SKIP", "no data");
       return;
     }
-    if (serverUiSettingsForProfile.profileId !== activeProfileId) {
-      debugLog("apply SKIP", "dataFor=", serverUiSettingsForProfile.profileId, "currentProfile=", activeProfileId);
+    const dataProfileId = serverUiSettingsForProfile.profileId != null ? Number(serverUiSettingsForProfile.profileId) : null;
+    if (dataProfileId !== activeProfileId) {
+      debugLog("apply SKIP", "dataFor=", dataProfileId, "currentProfile=", activeProfileId);
       return;
     }
     lastAppliedProfileIdRef.current = activeProfileId;
