@@ -1,215 +1,119 @@
 /**
- * Theme profile (Anish, Loveleet, or custom): list, select active, save/load UI settings per profile on server.
- * Debug: open /api/debug-theme-settings in browser or check console for [Theme] logs.
+ * Theme profile (Anish, Loveleet, or custom): list and active profile stored in localStorage only. No server.
  */
 
 import React, { useState, useEffect, useCallback, useImperativeHandle, useRef } from "react";
-import { api } from "./config";
 import { AuthContext } from "./auth";
 
 /** Theme names that cannot be deleted (Loveleet, Anish) */
 export const PROTECTED_THEME_NAMES = ["loveleet", "anish"];
 
+const BUILTIN_PROFILES = [
+  { id: 1, name: "Anish" },
+  { id: 2, name: "Loveleet" },
+];
+const STORAGE_ACTIVE_ID = "active_theme_profile_id";
+const STORAGE_CUSTOM_PROFILES = "theme_profiles_custom";
+
 export const ThemeProfileContext = React.createContext(null);
 
-const DEBUG = true;
-function log(...args) {
-  if (DEBUG && typeof console !== "undefined") console.log("[Theme]", ...args);
+function loadCustomProfiles() {
+  try {
+    const raw = localStorage.getItem(STORAGE_CUSTOM_PROFILES);
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr.filter((p) => p && p.id != null && p.name) : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+function saveCustomProfiles(list) {
+  try {
+    localStorage.setItem(STORAGE_CUSTOM_PROFILES, JSON.stringify(list));
+  } catch (_) {}
 }
 
 export function ThemeProfileProvider({ children, isLoggedIn, onSettingsLoaded, themeProfileRef }) {
-  const [profiles, setProfiles] = useState([]);
-  const [activeProfile, setActiveProfileState] = useState(null);
-  const [loading, setLoading] = useState(false);
-
-  const fetchProfiles = useCallback(async () => {
-    const url = api("/api/theme-profiles");
-    const res = await fetch(url, { credentials: "include" });
-    if (!res.ok) return [];
-    const data = await res.json().catch(() => ({}));
-    const list = data?.profiles || [];
-    setProfiles(list);
-    log("profiles loaded", list.length, list.map((p) => p.name));
-    return list;
-  }, []);
-
-  const fetchActiveProfile = useCallback(async () => {
-    const url = api("/api/active-theme-profile");
-    log("fetchActiveProfile: requesting", url);
-    const res = await fetch(url, { credentials: "include" });
-    if (!res.ok) {
-      log("fetchActiveProfile: res not ok", res.status);
-      return null;
-    }
-    const data = await res.json().catch(() => ({}));
-    const active = data?.activeProfile || null;
-    log("fetchActiveProfile: server returned", JSON.stringify(data), "-> active", active?.name, "id=", active?.id);
-    setActiveProfileState(active);
-    return active;
-  }, []);
+  const [customProfiles, setCustomProfiles] = useState([]);
+  const [activeId, setActiveIdState] = useState(null);
+  const profiles = [...BUILTIN_PROFILES, ...customProfiles];
+  const activeProfile = activeId != null ? profiles.find((p) => p.id === activeId) || { id: activeId, name: "?" } : null;
 
   useEffect(() => {
     if (!isLoggedIn) {
-      setProfiles([]);
-      setActiveProfileState(null);
+      setCustomProfiles([]);
+      setActiveIdState(null);
       return;
     }
-    let cancelled = false;
-    setLoading(true);
-    Promise.all([fetchProfiles(), fetchActiveProfile()])
-      .then(([list, active]) => {
-        if (cancelled) return;
-        // Do not overwrite server's saved active profile: server already returns last selected (or defaults to first on first visit)
-        if (!active && list.length > 0) {
-          log("no active profile from server; defaulting to first in state only (server will persist on first GET)");
-          setActiveProfileState(list[0]);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => { cancelled = true; };
-  }, [isLoggedIn, fetchProfiles, fetchActiveProfile]);
-
-  const setActiveProfileId = useCallback(
-    async (themeProfileId) => {
-      const url = api("/api/active-theme-profile");
-      log("setActiveProfileId: POST", themeProfileId, "profile name=", profiles.find((p) => p.id === themeProfileId)?.name);
-      const res = await fetch(url, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ theme_profile_id: themeProfileId }),
-      });
-      const responseData = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        log("setActiveProfileId: failed", res.status, responseData);
-        return false;
+    setCustomProfiles(loadCustomProfiles());
+    try {
+      const v = localStorage.getItem(STORAGE_ACTIVE_ID);
+      if (v != null && v !== "") {
+        const n = parseInt(v, 10);
+        if (!Number.isNaN(n)) setActiveIdState(n);
+        else setActiveIdState(BUILTIN_PROFILES[0]?.id ?? null);
+      } else {
+        setActiveIdState(BUILTIN_PROFILES[0]?.id ?? null);
       }
-      log("setActiveProfileId: server ok", responseData);
-      const active = themeProfileId != null ? profiles.find((p) => p.id === themeProfileId) || { id: themeProfileId, name: "?" } : null;
-      setActiveProfileState(active);
-      return true;
-    },
-    [profiles]
-  );
-
-  const refetchSettings = useCallback(async (profileIdOverride) => {
-    const themeProfileId = profileIdOverride !== undefined ? profileIdOverride : activeProfile?.id;
-    const q = themeProfileId != null ? `?theme_profile_id=${themeProfileId}` : "";
-    const url = api("/api/ui-settings") + q;
-    const res = await fetch(url, { credentials: "include" });
-    if (!res.ok) {
-      log("refetchSettings failed", res.status);
-      return { settings: [] };
+    } catch (_) {
+      setActiveIdState(BUILTIN_PROFILES[0]?.id ?? null);
     }
-    const data = await res.json().catch(() => ({}));
-    const settings = data?.settings || [];
-    log("refetchSettings", settings.length, "profileId=", themeProfileId, "keys", settings.slice(0, 10).map((s) => s.key));
-    return { settings };
-  }, [activeProfile?.id]);
+  }, [isLoggedIn]);
 
-  const saveSetting = useCallback(
-    async (key, value) => {
-      const themeProfileId = activeProfile?.id;
-      const url = api("/api/ui-settings");
-      const body = { key, value };
-      if (themeProfileId != null) body.theme_profile_id = themeProfileId;
-      const res = await fetch(url, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) {
-        log("saveSetting failed", key, res.status);
-        return false;
-      }
-      log("saveSetting", key, "profile=", activeProfile?.name);
-      return true;
-    },
-    [activeProfile]
-  );
+  const setActiveProfileId = useCallback((themeProfileId) => {
+    setActiveIdState(themeProfileId);
+    try {
+      if (themeProfileId != null) localStorage.setItem(STORAGE_ACTIVE_ID, String(themeProfileId));
+      else localStorage.removeItem(STORAGE_ACTIVE_ID);
+    } catch (_) {}
+    return true;
+  }, []);
 
-  const createProfile = useCallback(
-    async (name) => {
-      const url = api("/api/theme-profiles");
-      const res = await fetch(url, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: (name || "").trim() }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        log("createProfile failed", err);
-        return { ok: false, error: err?.error || "Failed" };
-      }
-      const data = await res.json().catch(() => ({}));
-      const profile = data?.profile;
-      if (profile) {
-        setProfiles((prev) => [...prev, profile]);
-        log("createProfile", profile.name, "id=", profile.id);
-        return { ok: true, profile };
-      }
-      return { ok: false, error: "No profile returned" };
-    },
-    []
-  );
+  const refetchSettings = useCallback(async () => ({ settings: [] }), []);
 
-  const deleteProfile = useCallback(async (themeProfileId) => {
-    const url = api(`/api/theme-profiles/${themeProfileId}`);
-    const res = await fetch(url, { method: "DELETE", credentials: "include" });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      log("deleteProfile failed", err);
-      return { ok: false, error: err?.error || "Failed" };
+  const saveSetting = useCallback((key, value) => {
+    try {
+      const str = typeof value === "string" ? value : JSON.stringify(value);
+      if (key === "theme") localStorage.setItem("theme", value);
+      else localStorage.setItem(key, str);
+    } catch (_) {}
+    return true;
+  }, []);
+
+  const createProfile = useCallback((name) => {
+    const trimmed = (name || "").trim();
+    if (!trimmed) return { ok: false, error: "Name required" };
+    const existing = [...BUILTIN_PROFILES, ...customProfiles];
+    const maxId = existing.length ? Math.max(...existing.map((p) => Number(p.id) || 0)) : 2;
+    const newProfile = { id: maxId + 1, name: trimmed };
+    const next = [...customProfiles, newProfile];
+    setCustomProfiles(next);
+    saveCustomProfiles(next);
+    return { ok: true, profile: newProfile };
+  }, [customProfiles]);
+
+  const deleteProfile = useCallback((themeProfileId) => {
+    const remaining = customProfiles.filter((p) => p.id !== themeProfileId);
+    setCustomProfiles(remaining);
+    saveCustomProfiles(remaining);
+    if (activeId === themeProfileId) {
+      const nextId = BUILTIN_PROFILES[0]?.id ?? remaining[0]?.id ?? null;
+      setActiveProfileId(nextId);
     }
-    const remaining = profiles.filter((p) => p.id !== themeProfileId);
-    setProfiles(remaining);
-    if (activeProfile?.id === themeProfileId) {
-      const next = remaining[0];
-      await setActiveProfileId(next?.id ?? null);
-    }
-    log("deleteProfile", themeProfileId);
     return { ok: true };
-  }, [activeProfile?.id, profiles, setActiveProfileId]);
-
-  // When active profile is set or changes, fetch settings for THAT profile and apply (pass id so we don't use stale closure)
-  useEffect(() => {
-    if (!isLoggedIn || !activeProfile?.id || typeof onSettingsLoaded !== "function") return;
-    const profileId = activeProfile.id;
-    let cancelled = false;
-    refetchSettings(profileId).then(({ settings }) => {
-      if (cancelled) return;
-      log("apply server settings to app", settings.length, "keys", "profileId=", profileId);
-      onSettingsLoaded(settings);
-      // Sync document theme immediately so Single Trade / any screen using dark: classes updates when profile changes
-      const themeEntry = settings.find((s) => s && s.key === "theme");
-      const themeVal = themeEntry?.value;
-      if (themeVal !== undefined && themeVal !== null) {
-        const isDark = themeVal === "dark" || themeVal === true || themeVal === "true" || themeVal === 1;
-        try {
-          document.documentElement.classList.toggle("dark", isDark);
-          localStorage.setItem("theme", isDark ? "dark" : "light");
-        } catch (_) {}
-      }
-    });
-    return () => { cancelled = true; };
-  }, [isLoggedIn, activeProfile?.id, onSettingsLoaded, refetchSettings]);
+  }, [customProfiles, activeId, setActiveProfileId]);
 
   const value = {
     profiles,
     activeProfile,
     activeThemeProfileId: activeProfile?.id ?? null,
-    loading,
+    loading: false,
     setActiveProfileId,
     refetchSettings,
     saveSetting,
     createProfile,
     deleteProfile,
-    fetchProfiles,
-    fetchActiveProfile,
   };
 
   useImperativeHandle(themeProfileRef, () => ({
@@ -217,7 +121,7 @@ export function ThemeProfileProvider({ children, isLoggedIn, onSettingsLoaded, t
     activeProfile,
     activeThemeProfileId: activeProfile?.id ?? null,
     refetchSettings,
-  }), [saveSetting, activeProfile, refetchSettings]);
+  }), [saveSetting, activeProfile]);
 
   return (
     <ThemeProfileContext.Provider value={value}>
@@ -227,36 +131,19 @@ export function ThemeProfileProvider({ children, isLoggedIn, onSettingsLoaded, t
 }
 
 /** Dropdown to select theme profile (Anish, Loveleet, or custom). Show only when logged in. */
-export function ThemeProfileSelector({ className = "", showDebug = true }) {
+export function ThemeProfileSelector({ className = "" }) {
   const ctx = React.useContext(ThemeProfileContext);
   const [newName, setNewName] = React.useState("");
-  const [creating, setCreating] = React.useState(false);
 
   if (!ctx) return null;
   const { profiles, activeProfile, setActiveProfileId, createProfile } = ctx;
 
-  const runDebugCheck = React.useCallback(async () => {
-    try {
-      const url = api("/api/debug-theme-settings");
-      const res = await fetch(url, { credentials: "include" });
-      const data = await res.json().catch(() => ({}));
-      log("debug-theme-settings", data);
-      if (typeof console !== "undefined") console.log("[Theme] Debug result (see Network tab for /api/debug-theme-settings):", data);
-    } catch (e) {
-      console.warn("[Theme] Debug check failed", e);
-    }
-  }, []);
-
-  const handleCreate = async () => {
+  const handleCreate = () => {
     const name = newName.trim();
     if (!name) return;
-    setCreating(true);
-    const result = await createProfile(name);
-    setCreating(false);
+    const result = createProfile(name);
     setNewName("");
-    if (result?.ok && result?.profile) {
-      await setActiveProfileId(result.profile.id);
-    }
+    if (result?.ok && result?.profile) setActiveProfileId(result.profile.id);
   };
 
   return (
@@ -288,22 +175,12 @@ export function ThemeProfileSelector({ className = "", showDebug = true }) {
         <button
           type="button"
           onClick={handleCreate}
-          disabled={creating || !newName.trim()}
+          disabled={!newName.trim()}
           className="px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-sm"
         >
           + New
         </button>
       </div>
-      {showDebug && (
-        <button
-          type="button"
-          onClick={runDebugCheck}
-          title="Verify theme profile and settings (opens in console)"
-          className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 underline"
-        >
-          Check
-        </button>
-      )}
     </div>
   );
 }
@@ -314,7 +191,6 @@ export function ProfilePanel({ buttonClassName = "" }) {
   const ctx = React.useContext(ThemeProfileContext);
   const [open, setOpen] = useState(false);
   const [newName, setNewName] = useState("");
-  const [creating, setCreating] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
   const [error, setError] = useState("");
   const panelRef = useRef(null);
@@ -335,24 +211,22 @@ export function ProfilePanel({ buttonClassName = "" }) {
 
   const isProtected = (name) => PROTECTED_THEME_NAMES.includes((name || "").trim().toLowerCase());
 
-  const handleCreate = async () => {
+  const handleCreate = () => {
     const name = newName.trim();
     if (!name) return;
     setError("");
-    setCreating(true);
-    const result = await createProfile(name);
-    setCreating(false);
+    const result = createProfile(name);
     setNewName("");
-    if (result?.ok && result?.profile) await setActiveProfileId(result.profile.id);
+    if (result?.ok && result?.profile) setActiveProfileId(result.profile.id);
     else if (result?.error) setError(result.error);
   };
 
-  const handleDelete = async (id, name) => {
+  const handleDelete = (id, name) => {
     if (isProtected(name)) return;
     if (!window.confirm(`Delete theme "${name}"?`)) return;
     setError("");
     setDeletingId(id);
-    const result = await deleteProfile(id);
+    const result = deleteProfile(id);
     setDeletingId(null);
     if (!result?.ok && result?.error) setError(result.error);
   };
@@ -402,7 +276,7 @@ export function ProfilePanel({ buttonClassName = "" }) {
               <button
                 type="button"
                 onClick={handleCreate}
-                disabled={creating || !newName.trim()}
+                disabled={!newName.trim()}
                 className="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-sm font-medium"
               >
                 + Add
