@@ -17,7 +17,6 @@ import LiveTradeViewPage from './components/LiveTradeViewPage';
 import LiveRunningTradesPage from './components/LiveRunningTradesPage';
 import LoginPage from './components/LoginPage';
 import { checkSession, logoutApi, extendSession, AuthContext } from './auth';
-import { ThemeProfileProvider, ProfilePanel } from './ThemeProfileContext';
 
 import GroupViewPage from './pages/GroupViewPage';
 import RefreshControls from './components/RefreshControls';
@@ -116,6 +115,8 @@ const parseBoolean = (value) => {
 
 const SESSION_CHECK_INTERVAL_MS = 30 * 1000; // check every 30 seconds
 const STAY_LOGGED_IN_PROMPT_AFTER_MS = 60 * 60 * 1000; // show "Stay logged in?" after 1 hour
+const LOGOUT_TIMER_SECONDS = 15 * 60; // 15 minutes
+const LOGOUT_TIMER_STORAGE_KEY = "logout_timer_enabled";
 
 const App = () => {
   const [isLoggedIn, setLoggedIn] = useState(false);
@@ -123,8 +124,20 @@ const App = () => {
   const [authChecking, setAuthChecking] = useState(true);
   const [showSessionWarning, setShowSessionWarning] = useState(false);
   const [showStayLoggedInPrompt, setShowStayLoggedInPrompt] = useState(false);
+  const [showLogoutPopup, setShowLogoutPopup] = useState(false);
+  const [logoutCountdown, setLogoutCountdown] = useState(LOGOUT_TIMER_SECONDS);
+  const [logoutTimerEnabled, setLogoutTimerEnabled] = useState(() => {
+    try {
+      const v = localStorage.getItem(LOGOUT_TIMER_STORAGE_KEY);
+      if (v === "false") return false;
+      if (v === "true") return true;
+    } catch (_) {}
+    return true;
+  });
+  const [sessionMenuOpen, setSessionMenuOpen] = useState(false);
   const loggedInAtRef = useRef(0);
-  const themeProfileRef = useRef(null);
+  const settingsAppliedOnceRef = useRef(false);
+  const sessionMenuRef = useRef(null);
 
   const [superTrendData, setSuperTrendData] = useState([]);
   const [emaTrends, setEmaTrends] = useState(null);
@@ -186,18 +199,34 @@ const App = () => {
     localStorage.setItem("fontSizeLevel", fontSizeLevel);
   }, [fontSizeLevel]);
 
-  // Check session on mount
+  // Check session on mount (with timeout so we never stay stuck on "Checking session..." if API is slow/missing)
+  const SESSION_CHECK_TIMEOUT_MS = 10000;
   useEffect(() => {
-    checkSession().then((data) => {
-      setLoggedIn(!!data);
-      if (data) loggedInAtRef.current = Date.now();
-      setUser(data?.user ?? null);
+    let cancelled = false;
+    const timeoutId = setTimeout(() => {
+      if (cancelled) return;
       setAuthChecking(false);
-    }).catch(() => {
       setLoggedIn(false);
       setUser(null);
-      setAuthChecking(false);
-    });
+    }, SESSION_CHECK_TIMEOUT_MS);
+    checkSession()
+      .then((data) => {
+        if (cancelled) return;
+        setLoggedIn(!!data);
+        if (data) loggedInAtRef.current = Date.now();
+        setUser(data?.user ?? null);
+        setAuthChecking(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setLoggedIn(false);
+        setUser(null);
+        setAuthChecking(false);
+      })
+      .finally(() => {
+        clearTimeout(timeoutId);
+      });
+    return () => { cancelled = true; clearTimeout(timeoutId); };
   }, []);
 
   // When user logs in (e.g. from LoginPage), set timer for "Stay logged in?" prompt
@@ -272,9 +301,15 @@ const App = () => {
 
 
   const [layoutOption, setLayoutOption] = useState(() => {
-    const saved = localStorage.getItem("layoutOption");
-    return saved ? parseInt(saved, 10) : 3;
-  }); // default 3 cards per row
+    try {
+      const saved = localStorage.getItem("layoutOption");
+      if (saved == null || saved === "") return 3;
+      const n = parseInt(saved, 10);
+      return (Number.isInteger(n) && n >= 1 && n <= 14) ? n : 3;
+    } catch (_) {
+      return 3;
+    }
+  }); // default 3 columns per row
   const [signalToggleAll, setSignalToggleAll] = useState(() => {
     const saved = localStorage.getItem("selectedSignals");
     if (saved) {
@@ -1394,15 +1429,110 @@ useEffect(() => {
     }
   }, [darkMode]);
 
-  // Apply server-backed settings when theme profile loads or user switches profile (debug: check Network + console [Theme])
-  const applyServerSettings = useCallback((settings) => {
-    if (!Array.isArray(settings)) return;
-    const map = {};
-    settings.forEach((s) => { if (s && s.key != null) map[s.key] = s.value; });
-    if (map.theme !== undefined) setDarkMode(map.theme === "dark");
-    if (map.fontSizeLevel !== undefined) { const n = Number(map.fontSizeLevel); if (!Number.isNaN(n)) setFontSizeLevel(n); }
-    if (map.layoutOption !== undefined) { const n = Number(map.layoutOption); if (!Number.isNaN(n)) setLayoutOption(n); }
+  // Helper: parse value from server (JSONB can return object or string)
+  const parseSetting = useCallback((v) => {
+    if (v == null) return undefined;
+    if (typeof v === "string") {
+      try {
+        const parsed = JSON.parse(v);
+        return parsed;
+      } catch {
+        return v;
+      }
+    }
+    return v;
   }, []);
+
+  // Defaults for each setting
+  const DEFAULT_SIGNALS = useMemo(() => ({
+    "2POLE_IN5LOOP": true, "IMACD": true, "2POLE_Direct_Signal": true,
+    "HIGHEST SWING HIGH": true, "LOWEST SWING LOW": true, "NORMAL SWING HIGH": true, "NORMAL SWING LOW": true,
+    "ProGap": true, "CrossOver": true, "Spike": true, "Kicker": true,
+  }), []);
+  const DEFAULT_INTERVALS = useMemo(() => ({ "1m": true, "3m": true, "5m": true, "15m": true, "30m": true, "1h": true, "2h": true, "4h": true }), []);
+  const DEFAULT_LIVE_FILTER = useMemo(() => ({ true: true, false: true }), []);
+  const DEFAULT_CHART = useMemo(() => ({ layout: 3, showRSI: true, showVolume: true }), []);
+  const DEFAULT_SOUND = useMemo(() => ({
+    enabled: false, volume: 0.7, mode: "tts", announceActions: { BUY: true, SELL: true }, announceSignals: {}, audioUrls: { BUY: "", SELL: "" }, newTradeWindowHours: 4,
+  }), []);
+
+  // Persist all settings to localStorage only
+  const syncToServerAndLocal = useCallback((key, value) => {
+    try {
+      if (key === "theme") localStorage.setItem("theme", value);
+      else if (key === "soundSettings") localStorage.setItem("soundSettings", typeof value === "string" ? value : JSON.stringify(value));
+      else localStorage.setItem(key, typeof value === "string" ? value : JSON.stringify(value));
+    } catch (_) {}
+  }, []);
+
+  useEffect(() => {
+    settingsAppliedOnceRef.current = true;
+  }, []);
+
+  useEffect(() => {
+    if (!settingsAppliedOnceRef.current) return;
+    syncToServerAndLocal("theme", darkMode ? "dark" : "light");
+  }, [darkMode, syncToServerAndLocal]);
+  useEffect(() => {
+    if (!settingsAppliedOnceRef.current) return;
+    syncToServerAndLocal("layoutOption", layoutOption);
+  }, [layoutOption, syncToServerAndLocal]);
+  useEffect(() => {
+    if (!settingsAppliedOnceRef.current) return;
+    syncToServerAndLocal("fontSizeLevel", fontSizeLevel);
+  }, [fontSizeLevel, syncToServerAndLocal]);
+  useEffect(() => {
+    if (!settingsAppliedOnceRef.current) return;
+    syncToServerAndLocal("liveFilter", liveFilter);
+  }, [liveFilter, syncToServerAndLocal]);
+  useEffect(() => {
+    if (!settingsAppliedOnceRef.current) return;
+    syncToServerAndLocal("liveRadioMode", liveRadioMode ? "true" : "false");
+  }, [liveRadioMode, syncToServerAndLocal]);
+  useEffect(() => {
+    if (!settingsAppliedOnceRef.current) return;
+    syncToServerAndLocal("filterVisible", filterVisible ? "true" : "false");
+  }, [filterVisible, syncToServerAndLocal]);
+  useEffect(() => {
+    if (!settingsAppliedOnceRef.current) return;
+    syncToServerAndLocal("machineRadioMode", machineRadioMode);
+  }, [machineRadioMode, syncToServerAndLocal]);
+  useEffect(() => {
+    if (!settingsAppliedOnceRef.current) return;
+    syncToServerAndLocal("machineToggleAll", machineToggleAll);
+  }, [machineToggleAll, syncToServerAndLocal]);
+  useEffect(() => {
+    if (!settingsAppliedOnceRef.current) return;
+    syncToServerAndLocal("selectedSignals", selectedSignals);
+  }, [selectedSignals, syncToServerAndLocal]);
+  useEffect(() => {
+    if (!settingsAppliedOnceRef.current) return;
+    syncToServerAndLocal("selectedMachines", selectedMachines);
+  }, [selectedMachines, syncToServerAndLocal]);
+  useEffect(() => {
+    if (!settingsAppliedOnceRef.current) return;
+    syncToServerAndLocal("selectedIntervals", selectedIntervals);
+  }, [selectedIntervals, syncToServerAndLocal]);
+  useEffect(() => {
+    if (!settingsAppliedOnceRef.current) return;
+    syncToServerAndLocal("selectedActions", selectedActions);
+  }, [selectedActions, syncToServerAndLocal]);
+  useEffect(() => {
+    if (!settingsAppliedOnceRef.current) return;
+    syncToServerAndLocal("chartSettings", chartSettings);
+  }, [chartSettings, syncToServerAndLocal]);
+  useEffect(() => {
+    if (!settingsAppliedOnceRef.current) return;
+    syncToServerAndLocal("soundSettings", soundSettings);
+  }, [soundSettings, syncToServerAndLocal]);
+  useEffect(() => {
+    if (!settingsAppliedOnceRef.current) return;
+    if (fromDate) syncToServerAndLocal("fromDate", fromDate.toISOString());
+  }, [fromDate, syncToServerAndLocal]);
+  useEffect(() => {
+    if (!settingsAppliedOnceRef.current) return;
+    if (toDate) syncToServerAndLocal("toDate", toDate.toISOString());
+  }, [toDate, syncToServerAndLocal]);
 
   // Sync dark mode with localStorage changes (e.g., from reports or another tab)
   useEffect(() => {
@@ -1428,6 +1558,80 @@ useEffect(() => {
     fetchTrades();
   }, []);
 
+  const doLogout = useCallback(async () => {
+    await logoutApi();
+    setLoggedIn(false);
+    setUser(null);
+    setShowSessionWarning(false);
+    setShowStayLoggedInPrompt(false);
+    setShowLogoutPopup(false);
+  }, []);
+
+  const triggerLogout = useCallback(() => {
+    if (logoutTimerEnabled) {
+      setShowLogoutPopup(true);
+      setLogoutCountdown(LOGOUT_TIMER_SECONDS);
+      setSessionMenuOpen(false);
+    } else {
+      doLogout();
+    }
+  }, [logoutTimerEnabled, doLogout]);
+
+  const authContextValue = useMemo(() => ({
+    user,
+    logout: doLogout,
+    triggerLogout,
+  }), [user, doLogout, triggerLogout]);
+
+  const handleStayLoggedIn = useCallback(async () => {
+    const ok = await extendSession();
+    if (ok) {
+      loggedInAtRef.current = Date.now();
+      setShowStayLoggedInPrompt(false);
+    } else {
+      setLoggedIn(false);
+      setShowStayLoggedInPrompt(false);
+    }
+  }, []);
+
+  const formatCountdown = useCallback((sec) => {
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${m}:${s < 10 ? "0" : ""}${s}`;
+  }, []);
+
+  // Logout countdown: when popup is open, tick every second
+  useEffect(() => {
+    if (!showLogoutPopup) return;
+    const t = setInterval(() => {
+      setLogoutCountdown((prev) => (prev <= 1 ? 0 : prev - 1));
+    }, 1000);
+    return () => clearInterval(t);
+  }, [showLogoutPopup]);
+
+  // Auto-logout when countdown reaches 0
+  useEffect(() => {
+    if (showLogoutPopup && logoutCountdown === 0) doLogout();
+  }, [showLogoutPopup, logoutCountdown, doLogout]);
+
+  // Persist logout timer setting
+  useEffect(() => {
+    try {
+      localStorage.setItem(LOGOUT_TIMER_STORAGE_KEY, logoutTimerEnabled ? "true" : "false");
+    } catch (_) {}
+  }, [logoutTimerEnabled]);
+
+  // Close session menu on outside click
+  useEffect(() => {
+    const close = (e) => {
+      if (sessionMenuRef.current && !sessionMenuRef.current.contains(e.target)) setSessionMenuOpen(false);
+    };
+    if (sessionMenuOpen) {
+      document.addEventListener("click", close);
+      return () => document.removeEventListener("click", close);
+    }
+  }, [sessionMenuOpen]);
+
   if (authChecking) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#0f0f0f]">
@@ -1439,35 +1643,88 @@ useEffect(() => {
     return <LoginPage onLogin={() => setLoggedIn(true)} />;
   }
 
-  const authContextValue = {
-    user,
-    logout: async () => {
-      await logoutApi();
-      setLoggedIn(false);
-      setUser(null);
-      setShowSessionWarning(false);
-      setShowStayLoggedInPrompt(false);
-    },
-  };
-
-  const handleStayLoggedIn = async () => {
-    const ok = await extendSession();
-    if (ok) {
-      loggedInAtRef.current = Date.now();
-      setShowStayLoggedInPrompt(false);
-    } else {
-      setLoggedIn(false);
-      setShowStayLoggedInPrompt(false);
-    }
-  };
-
   return (
       <AuthContext.Provider value={authContextValue}>
-      <ThemeProfileProvider
-        isLoggedIn={isLoggedIn}
-        onSettingsLoaded={applyServerSettings}
-        themeProfileRef={themeProfileRef}
-      >
+      <div className="flex flex-col min-h-screen">
+        <header className="flex-shrink-0 h-12 flex items-center justify-end gap-2 px-4 border-b border-gray-200 dark:border-gray-700 shadow-sm bg-[#f5f6fa] dark:bg-black ">
+          <button
+            onClick={() => setIsSoundOpen(true)}
+            className="px-2 py-1 rounded-full bg-white/80 dark:bg-gray-800/80 shadow hover:scale-105 transition-all text-sm font-semibold"
+            title="Sound & New trades settings"
+          >
+            🔊 Sound
+          </button>
+          <button
+            onClick={() => {
+              setDarkMode((dm) => {
+                const next = !dm;
+                try { localStorage.setItem("theme", next ? "dark" : "light"); } catch (_) {}
+                return next;
+              });
+            }}
+            className="p-1.5 rounded-full bg-white/80 dark:bg-gray-800/80 shadow hover:scale-110 transition-all"
+            title={darkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
+            style={{ fontSize: 22 }}
+          >
+            {darkMode ? "🌞" : "🌙"}
+          </button>
+          <div className="relative" ref={sessionMenuRef}>
+            <button
+              type="button"
+              onClick={() => setSessionMenuOpen((o) => !o)}
+              className="px-3 py-1.5 rounded-full bg-white/80 dark:bg-gray-800/80 shadow hover:scale-105 transition-all text-sm font-semibold text-gray-700 dark:text-gray-200"
+              title="Session & Logout"
+            >
+              Logout
+            </button>
+            {sessionMenuOpen && (
+              <div className="absolute right-0 top-full mt-1 z-50 w-56 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 shadow-xl py-2 px-3">
+                <label className="flex items-center justify-between gap-2 py-2 px-2 cursor-pointer text-sm text-gray-700 dark:text-gray-200">
+                  <span>Auto logout (15 min)</span>
+                  <input
+                    type="checkbox"
+                    checked={logoutTimerEnabled}
+                    onChange={(e) => setLogoutTimerEnabled(e.target.checked)}
+                    className="rounded"
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={triggerLogout}
+                  className="w-full mt-1 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-semibold"
+                >
+                  Log out
+                </button>
+              </div>
+            )}
+          </div>
+        </header>
+        <main className="flex-1 min-h-0 flex flex-col overflow-auto">
+      {showLogoutPopup && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" aria-labelledby="logout-popup-title">
+          <div className="bg-white dark:bg-[#222] rounded-xl p-6 max-w-sm w-full shadow-xl border border-gray-200 dark:border-gray-700 mx-4">
+            <h2 id="logout-popup-title" className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Log out</h2>
+            <p className="text-gray-600 dark:text-gray-300 text-sm mb-2">You will be logged out automatically in</p>
+            <p className="text-2xl font-mono font-bold text-gray-900 dark:text-white mb-4">{formatCountdown(logoutCountdown)}</p>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowLogoutPopup(false)}
+                className="flex-1 py-2 rounded-lg bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 font-semibold"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={doLogout}
+                className="flex-1 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white font-semibold"
+              >
+                Log out now
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {showStayLoggedInPrompt && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" aria-labelledby="stay-logged-in-title">
           <div className="bg-white dark:bg-[#222] rounded-xl p-6 max-w-sm w-full shadow-xl border border-gray-200 dark:border-gray-700 mx-4">
@@ -1476,7 +1733,7 @@ useEffect(() => {
             <div className="flex gap-3">
               <button
                 type="button"
-                onClick={async () => { setShowStayLoggedInPrompt(false); await authContextValue.logout(); }}
+                onClick={async () => { setShowStayLoggedInPrompt(false); await doLogout(); }}
                 className="flex-1 py-2 rounded-lg bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 font-semibold"
               >
                 Log out
@@ -1530,29 +1787,8 @@ useEffect(() => {
                   initialAutoOn={true}
                 />
               </div>
-              {/* Light/Dark mode toggle button */}
-              <button
-                onClick={() => {
-                  setDarkMode((dm) => {
-                    const next = !dm;
-                    themeProfileRef.current?.saveSetting("theme", next ? "dark" : "light");
-                    return next;
-                  });
-                }}
-                className="absolute right-8 top-3 z-20 p-2 rounded-full bg-white/80 dark:bg-gray-800/80 shadow hover:scale-110 transition-all"
-                title={darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-                style={{ fontSize: 24 }}
-              >
-                {darkMode ? '🌞' : '🌙'}
-              </button>
-              <ProfilePanel buttonClassName="absolute right-36 top-3 z-20 px-3 py-2 rounded-full bg-white/80 dark:bg-gray-800/80 shadow hover:scale-105 transition-all text-sm font-semibold text-gray-700 dark:text-gray-200" />
-              <button
-                onClick={() => setIsSoundOpen(true)}
-                className="absolute right-24 top-3 z-20 px-2 py-1 rounded-full bg-white/80 dark:bg-gray-800/80 shadow hover:scale-105 transition-all text-sm font-semibold"
-                title="Sound & New trades settings"
-              >
-                🔊 Sound
-              </button>
+              {/* Right side: empty (Sound, Theme, Logout are in the global bar above) */}
+              <div className="absolute right-4 top-3 z-20" />
               {/* SVG Graph Background (animated) */}
               <AnimatedGraphBackground width={400} height={48} opacity={0.4} />
               {/* LAB text */}
@@ -1686,26 +1922,31 @@ useEffect(() => {
         <div className="flex flex-wrap items-start gap-3 ml-0 md:ml-6">
   {/* Controls block */}
   <div className="flex items-center gap-3 flex-none">
-    <span className="text-sm md:text-base lg:text-lg font-semibold text-black">Layout:</span>
+    <span className="text-sm md:text-base lg:text-lg font-semibold text-black dark:text-white">Layout:</span>
     <button
+      type="button"
       onClick={() => {
         const newOption = Math.max(1, layoutOption - 1);
         setLayoutOption(newOption);
-        localStorage.setItem("layoutOption", newOption);
-        themeProfileRef.current?.saveSetting("layoutOption", newOption);
+        try { localStorage.setItem("layoutOption", String(newOption)); } catch (_) {}
       }}
-      className="bg-gray-300 hover:bg-gray-400 text-black px-2 py-1 md:px-3 md:py-1.5 rounded text-sm md:text-base"
+      className="bg-gray-300 hover:bg-gray-400 dark:bg-gray-600 dark:hover:bg-gray-500 text-black dark:text-white px-2 py-1 md:px-3 md:py-1.5 rounded text-sm md:text-base"
+      aria-label="Decrease columns"
     >
       ➖
     </button>
+    <span className="text-sm md:text-base font-medium text-black dark:text-white min-w-[1.5rem] text-center" aria-live="polite">
+      {layoutOption}
+    </span>
     <button
+      type="button"
       onClick={() => {
         const newOption = Math.min(14, layoutOption + 1);
         setLayoutOption(newOption);
-        localStorage.setItem("layoutOption", newOption);
-        themeProfileRef.current?.saveSetting("layoutOption", newOption);
+        try { localStorage.setItem("layoutOption", String(newOption)); } catch (_) {}
       }}
-      className="bg-gray-300 hover:bg-gray-400 text-black px-2 py-1 md:px-3 md:py-1.5 rounded text-sm md:text-base"
+      className="bg-gray-300 hover:bg-gray-400 dark:bg-gray-600 dark:hover:bg-gray-500 text-black dark:text-white px-2 py-1 md:px-3 md:py-1.5 rounded text-sm md:text-base"
+      aria-label="Increase columns"
     >
       ➕
     </button>
@@ -1718,7 +1959,7 @@ useEffect(() => {
           setFontSizeLevel((prev) => {
             const newLevel = Math.max(1, prev - 1);
             localStorage.setItem("fontSizeLevel", newLevel);
-            themeProfileRef.current?.saveSetting("fontSizeLevel", newLevel);
+            try { localStorage.setItem("fontSizeLevel", String(newLevel)); } catch (_) {}
             return newLevel;
           })
         }
@@ -1735,7 +1976,7 @@ useEffect(() => {
           setFontSizeLevel((prev) => {
             const newLevel = Math.min(30, prev + 1);
             localStorage.setItem("fontSizeLevel", newLevel);
-            themeProfileRef.current?.saveSetting("fontSizeLevel", newLevel);
+            try { localStorage.setItem("fontSizeLevel", String(newLevel)); } catch (_) {}
             return newLevel;
           })
         }
@@ -1953,7 +2194,7 @@ useEffect(() => {
                     <div
                       className="grid gap-6 w-full px-2 py-4"
                       style={{
-                        gridTemplateColumns: `repeat(${layoutOption}, minmax(0, 1fr))`,
+                        gridTemplateColumns: `repeat(${Math.min(14, Math.max(1, Number(layoutOption) || 3))}, minmax(0, 1fr))`,
                         transition: 'all 0.3s ease-in-out',
                       }}
                     >
@@ -2052,7 +2293,8 @@ useEffect(() => {
           </>
         } />
       </Routes>
-      </ThemeProfileProvider>
+        </main>
+      </div>
       </AuthContext.Provider>
   );
 };

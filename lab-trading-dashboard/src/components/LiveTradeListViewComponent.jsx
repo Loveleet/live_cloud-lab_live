@@ -2,8 +2,8 @@ import React from 'react';
 import Button from '@mui/material/Button';
 
 const LiveTradeListViewComponent = ({ gridPreview, filterBar }) => (
-  <div style={{ padding: 32, position: 'relative' }}>
-    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 24, marginBottom: 24, width: '100%', minWidth: 0 }}>
+  <div style={{ padding: '12px 16px', position: 'relative' }}>
+    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, marginBottom: 8, width: '100%', minWidth: 0 }}>
       {/* Grid preview */}
       <div style={{ minWidth: 220, minHeight: 180 }}>
         {gridPreview}

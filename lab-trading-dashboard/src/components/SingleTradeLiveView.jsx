@@ -82,6 +82,8 @@ const SIGNAL_ALERT_RULES_KEY = "singleTradeLiveView_signalAlertRules";
 const ALERT_RULE_GROUPS_KEY = "singleTradeLiveView_alertRuleGroups";
 const MASTER_BLINK_COLOR_KEY = "singleTradeLiveView_masterBlinkColor";
 const ACTIVE_RULE_BOOK_ID_KEY = "singleTradeLiveView_activeRuleBookId";
+const LOCAL_RULE_BOOKS_KEY = "singleTradeLiveView_localRuleBooks";
+const ACTIVE_LOCAL_RULE_BOOK_ID_KEY = "singleTradeLiveView_activeLocalRuleBookId";
 const BINANCE_COLUMNS_ORDER_KEY = "singleTradeLiveView_binanceColumnsOrder";
 const BINANCE_COLUMNS_VISIBILITY_KEY = "singleTradeLiveView_binanceColumnsVisibility";
 const SECTION_IDS = ["information", "binanceData", "chart"];
@@ -478,31 +480,41 @@ function InfoFieldsModal({ orderedKeys, allKeys, visibleKeys, setVisibleKeys, se
 function SectionOrderModal({ sectionOrder, setSectionOrder, onClose }) {
   const [dragIndex, setDragIndex] = useState(null);
   const [overIndex, setOverIndex] = useState(null);
+  const dragIndexRef = useRef(null);
 
   const handleDragStart = (e, index) => {
+    dragIndexRef.current = index;
     setDragIndex(index);
     e.dataTransfer.effectAllowed = "move";
     e.dataTransfer.setData("text/plain", String(index));
+    try {
+      if (e.dataTransfer.setDragImage && e.currentTarget) {
+        e.dataTransfer.setDragImage(e.currentTarget, 0, 0);
+      }
+    } catch (_) {}
   };
   const handleDragOver = (e, index) => {
     e.preventDefault();
+    e.stopPropagation();
     e.dataTransfer.dropEffect = "move";
     setOverIndex(index);
   };
   const handleDragLeave = () => setOverIndex(null);
   const handleDrop = (e, toIndex) => {
     e.preventDefault();
+    e.stopPropagation();
     setOverIndex(null);
-    if (dragIndex == null) return;
-    const fromIndex = dragIndex;
+    const fromIndex = dragIndexRef.current ?? dragIndex;
+    dragIndexRef.current = null;
     setDragIndex(null);
-    if (fromIndex === toIndex) return;
+    if (fromIndex == null || fromIndex === toIndex) return;
     const next = [...sectionOrder];
     const [removed] = next.splice(fromIndex, 1);
     next.splice(toIndex, 0, removed);
     setSectionOrder(next);
   };
   const handleDragEnd = () => {
+    dragIndexRef.current = null;
     setDragIndex(null);
     setOverIndex(null);
   };
@@ -512,12 +524,16 @@ function SectionOrderModal({ sectionOrder, setSectionOrder, onClose }) {
       <div
         className="bg-white dark:bg-[#222] rounded-xl p-6 max-w-md w-full shadow-xl"
         onClick={(e) => e.stopPropagation()}
+        onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = "move"; }}
       >
         <h3 className="font-semibold text-lg mb-2">Section order</h3>
         <p className="text-sm text-gray-500 dark:text-white/90 mb-4">
           Drag to set the order of sections (top to bottom).
         </p>
-        <ul className="space-y-1">
+        <ul
+          className="space-y-1"
+          onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = "move"; }}
+        >
           {sectionOrder.map((id, index) => (
             <li
               key={id}
@@ -532,7 +548,39 @@ function SectionOrderModal({ sectionOrder, setSectionOrder, onClose }) {
               } ${dragIndex === index ? "opacity-60" : ""}`}
             >
               <span className="text-gray-400 dark:text-white/70 select-none" title="Drag to reorder">⋮⋮</span>
-              <span className="font-medium">{SECTION_LABELS[id] || id}</span>
+              <span className="font-medium flex-1">{SECTION_LABELS[id] || id}</span>
+              <span className="flex gap-0.5">
+                <button
+                  type="button"
+                  disabled={index === 0}
+                  onClick={() => {
+                    if (index === 0) return;
+                    const next = [...sectionOrder];
+                    [next[index - 1], next[index]] = [next[index], next[index - 1]];
+                    setSectionOrder(next);
+                  }}
+                  className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                  title="Move up"
+                  aria-label="Move up"
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  disabled={index === sectionOrder.length - 1}
+                  onClick={() => {
+                    if (index >= sectionOrder.length - 1) return;
+                    const next = [...sectionOrder];
+                    [next[index], next[index + 1]] = [next[index + 1], next[index]];
+                    setSectionOrder(next);
+                  }}
+                  className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                  title="Move down"
+                  aria-label="Move down"
+                >
+                  ↓
+                </button>
+              </span>
             </li>
           ))}
         </ul>
@@ -877,6 +925,23 @@ function LiveTradeChartSection({
   });
   const [ruleBooksLoading, setRuleBooksLoading] = useState(false);
   const [ruleBooksError, setRuleBooksError] = useState("");
+  const [localRuleBooks, setLocalRuleBooks] = useState(() => {
+    try {
+      const raw = localStorage.getItem(LOCAL_RULE_BOOKS_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed?.books) ? parsed.books : [];
+    } catch {
+      return [];
+    }
+  });
+  const [selectedLocalRuleBookId, setSelectedLocalRuleBookId] = useState(() => {
+    try {
+      return localStorage.getItem(ACTIVE_LOCAL_RULE_BOOK_ID_KEY) || null;
+    } catch {
+      return null;
+    }
+  });
   const sortedAlertRules = useMemo(() => {
     const sorted = [...(alertRules || [])];
     sorted.sort((a, b) => {
@@ -1026,6 +1091,75 @@ function LiveTradeChartSection({
       }
     },
     [alertRules, alertRuleGroups, masterBlinkColor, serverRuleBooks, selectedRuleBookId]
+  );
+
+  const persistLocalRuleBooks = useCallback((books) => {
+    try {
+      localStorage.setItem(LOCAL_RULE_BOOKS_KEY, JSON.stringify({ books }));
+    } catch (_) {}
+  }, []);
+
+  const handleSaveLocalRuleBook = useCallback(
+    (mode) => {
+      if (!alertRules || !alertRules.length) {
+        window.alert("No rules to save. Create some rules first.");
+        return;
+      }
+      let name = "";
+      let id = null;
+      if (mode === "new") {
+        name = window.prompt("Enter a name for this rule book (saved on this device):");
+        if (!name || !name.trim()) return;
+        id = "local_" + Date.now();
+      } else if (mode === "update") {
+        const current = localRuleBooks.find((b) => b.id === selectedLocalRuleBookId);
+        if (!current) {
+          window.alert("No local rule book is selected to update.");
+          return;
+        }
+        name = current.name;
+        id = current.id;
+      } else return;
+
+      const book = {
+        id,
+        name: name.trim(),
+        createdAt: new Date().toISOString(),
+        rules: alertRules || [],
+        groups: alertRuleGroups || [],
+        masterBlinkColor: masterBlinkColor || "#f97316",
+      };
+      const nextBooks =
+        mode === "new"
+          ? [...localRuleBooks, book]
+          : localRuleBooks.map((b) => (b.id === id ? book : b));
+      setLocalRuleBooks(nextBooks);
+      persistLocalRuleBooks(nextBooks);
+      setSelectedLocalRuleBookId(id);
+      try {
+        localStorage.setItem(ACTIVE_LOCAL_RULE_BOOK_ID_KEY, String(id));
+      } catch {}
+      if (typeof window !== "undefined") {
+        window.alert(mode === "new" ? "Rule book saved on this device." : "Rule book updated on this device.");
+      }
+    },
+    [alertRules, alertRuleGroups, masterBlinkColor, localRuleBooks, selectedLocalRuleBookId, persistLocalRuleBooks]
+  );
+
+  const handleLoadLocalRuleBook = useCallback(
+    (id) => {
+      if (!id) return;
+      const book = localRuleBooks.find((b) => b.id === id);
+      if (!book) return;
+      setAlertRules(Array.isArray(book.rules) ? book.rules : []);
+      setAlertRuleGroups(Array.isArray(book.groups) ? book.groups : []);
+      setMasterBlinkColor(book.masterBlinkColor && /^#[0-9A-Fa-f]{6}$/.test(book.masterBlinkColor) ? book.masterBlinkColor : "#f97316");
+      setSelectedLocalRuleBookId(id);
+      try {
+        localStorage.setItem(ACTIVE_LOCAL_RULE_BOOK_ID_KEY, String(id));
+      } catch {}
+    },
+    [localRuleBooks, setAlertRules, setAlertRuleGroups, setMasterBlinkColor]
   );
 
   const handleExportAlertRules = useCallback(() => {
@@ -1316,7 +1450,56 @@ function LiveTradeChartSection({
               <span className="font-semibold text-violet-200">Interval</span> and{" "}
               <span className="font-semibold text-violet-200">Candle row</span> (current / prev / prior).
             </p>
-            {/* Server-side rule books */}
+            {/* Local rule books (no login required) */}
+            <div className="mb-4 p-3 rounded-xl bg-[#181818] border border-emerald-700/50 space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-semibold text-emerald-200">Rule books (saved on this device)</span>
+                <select
+                  className="bg-[#111] border border-gray-700 rounded px-2 py-1 text-[11px] min-w-[160px]"
+                  value={selectedLocalRuleBookId || ""}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (!v) {
+                      setSelectedLocalRuleBookId(null);
+                      try {
+                        localStorage.removeItem(ACTIVE_LOCAL_RULE_BOOK_ID_KEY);
+                      } catch {}
+                      return;
+                    }
+                    setSelectedLocalRuleBookId(v);
+                    handleLoadLocalRuleBook(v);
+                  }}
+                >
+                  <option value="">(None selected)</option>
+                  {localRuleBooks.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                <button
+                  type="button"
+                  className="px-2 py-1 rounded bg-emerald-700 hover:bg-emerald-600"
+                  onClick={() => handleSaveLocalRuleBook("new")}
+                >
+                  Save as new (this device)
+                </button>
+                <button
+                  type="button"
+                  className="px-2 py-1 rounded bg-blue-700 hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed"
+                  disabled={!selectedLocalRuleBookId}
+                  onClick={() => handleSaveLocalRuleBook("update")}
+                >
+                  Update selected (this device)
+                </button>
+                <span className="text-[11px] text-gray-400">
+                  Saved in this browser only. Works without logging in.
+                </span>
+              </div>
+            </div>
+            {/* Server-side rule books (requires login) */}
             <div className="mb-4 p-3 rounded-xl bg-[#181818] border border-violet-700/60 space-y-2">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-xs font-semibold text-violet-200">Rule books (saved on server)</span>
@@ -1358,10 +1541,10 @@ function LiveTradeChartSection({
               <div className="flex flex-wrap items-center gap-2 text-[11px]">
                 <button
                   type="button"
-                  className="px-2 py-1 rounded bg-emerald-700 hover:bg-emerald-600"
+                  className="px-2 py-1 rounded bg-violet-700 hover:bg-violet-600"
                   onClick={() => handleSaveRuleBook("new")}
                 >
-                  Save as new rule book
+                  Save as new (server)
                 </button>
                 <button
                   type="button"
@@ -1369,10 +1552,10 @@ function LiveTradeChartSection({
                   disabled={!selectedRuleBookId}
                   onClick={() => handleSaveRuleBook("update")}
                 >
-                  Update selected rule book
+                  Update selected (server)
                 </button>
                 <span className="text-[11px] text-gray-400">
-                  Rule books are stored in the server database and can be loaded from GitHub Pages or localhost.
+                  Requires login. Use &quot;Saved on this device&quot; above if you see Not logged in.
                 </span>
               </div>
             </div>
@@ -2756,8 +2939,6 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
     } catch {}
     return null;
   });
-  const serverSettingsAppliedRef = useRef(false);
-  const [serverUiSettings, setServerUiSettings] = useState(null);
   const orderedKeys = fieldOrder && fieldOrder.length
     ? [...fieldOrder.filter((k) => allKeys.includes(k)), ...allKeys.filter((k) => !fieldOrder.includes(k))]
     : allKeys;
@@ -2825,111 +3006,19 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
     return "intervalWise";
   });
 
-  // Persist a single UI setting to cloud and localStorage (used below and in layout useEffects)
+  // Persist UI settings to localStorage only
   const saveUiSetting = useCallback((key, value) => {
     try {
       localStorage.setItem(key, typeof value === "string" ? value : JSON.stringify(value));
-    } catch {}
-    const url = api("/api/ui-settings");
-    fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ key, value }),
-    })
-      .then((res) => {
-        if (!res.ok) {
-          return res.json().then((d) => { throw new Error(d?.error || res.statusText); });
-        }
-        return res.json();
-      })
-      .then(() => {
-        if (key === BINANCE_COLUMNS_ORDER_KEY || key === BINANCE_COLUMNS_VISIBILITY_KEY) {
-          console.debug("[UI Settings] Saved to server:", key);
-        }
-      })
-      .catch((err) => {
-        console.warn("[UI Settings] Save failed for", key, ":", err?.message || err);
-      });
+    } catch (_) {}
   }, []);
 
   useEffect(() => {
-    localStorage.setItem(INFO_SPLIT_KEY, String(infoSplitPercent));
     saveUiSetting(INFO_SPLIT_KEY, infoSplitPercent);
   }, [infoSplitPercent, saveUiSetting]);
   useEffect(() => {
-    localStorage.setItem(SIGNALS_VIEW_MODE_KEY, signalsTableViewMode);
     saveUiSetting(SIGNALS_VIEW_MODE_KEY, signalsTableViewMode);
   }, [signalsTableViewMode, saveUiSetting]);
-
-  // Load UI settings from cloud so layout persists when using GitHub Pages / different browser
-  useEffect(() => {
-    let cancelled = false;
-    const url = api("/api/ui-settings");
-    fetch(url)
-      .then((res) => {
-        if (!res.ok) {
-          console.warn("[UI Settings] GET failed:", res.status, res.statusText);
-          return res.json().then((d) => { throw new Error(d?.error || res.statusText); });
-        }
-        return res.json();
-      })
-      .then((data) => {
-        if (cancelled) return;
-        const list = Array.isArray(data?.settings) ? data.settings : [];
-        const map = {};
-        list.forEach((s) => {
-          if (s && s.key != null) {
-            let val = s.value;
-            if (typeof val === "string") {
-              try {
-                val = JSON.parse(val);
-              } catch (_) { /* keep string */ }
-            }
-            map[s.key] = val;
-          }
-        });
-        if (list.length > 0) console.debug("[UI Settings] Loaded from server:", Object.keys(map));
-        setServerUiSettings(map);
-      })
-      .catch((err) => {
-        console.warn("[UI Settings] Load error:", err?.message || err);
-        setServerUiSettings({});
-      });
-    return () => { cancelled = true; };
-  }, []);
-
-  // Apply server settings once when loaded (overrides localStorage for remote consistency)
-  useEffect(() => {
-    if (serverUiSettings == null || serverSettingsAppliedRef.current) return;
-    serverSettingsAppliedRef.current = true;
-    if (Array.isArray(serverUiSettings[INFO_FIELD_ORDER_KEY]) && serverUiSettings[INFO_FIELD_ORDER_KEY].length) {
-      setFieldOrder(serverUiSettings[INFO_FIELD_ORDER_KEY]);
-    }
-    if (Array.isArray(serverUiSettings[INFO_FIELDS_KEY])) {
-      setVisibleKeys(new Set(serverUiSettings[INFO_FIELDS_KEY]));
-    }
-    const sectionArr = serverUiSettings[SECTION_ORDER_KEY];
-    if (Array.isArray(sectionArr) && sectionArr.length === SECTION_IDS.length && SECTION_IDS.every((id) => sectionArr.includes(id))) {
-      setSectionOrder(sectionArr);
-    }
-    if (typeof serverUiSettings[INFO_SPLIT_KEY] === "number" || (typeof serverUiSettings[INFO_SPLIT_KEY] === "string" && serverUiSettings[INFO_SPLIT_KEY] !== "")) {
-      const n = parseInt(serverUiSettings[INFO_SPLIT_KEY], 10);
-      if (!Number.isNaN(n)) setInfoSplitPercent(Math.max(20, Math.min(80, n)));
-    }
-    if (serverUiSettings[SIGNALS_VIEW_MODE_KEY] === "rowWise" || serverUiSettings[SIGNALS_VIEW_MODE_KEY] === "intervalWise") {
-      setSignalsTableViewMode(serverUiSettings[SIGNALS_VIEW_MODE_KEY]);
-    }
-    const binanceOrder = serverUiSettings[BINANCE_COLUMNS_ORDER_KEY];
-    if (Array.isArray(binanceOrder) && binanceOrder.length) {
-      console.debug("[UI Settings] Applying Binance column order from server:", binanceOrder.length, "columns");
-      setBinanceColumns(binanceOrder);
-    }
-    const binanceVis = serverUiSettings[BINANCE_COLUMNS_VISIBILITY_KEY];
-    if (binanceVis && typeof binanceVis === "object" && !Array.isArray(binanceVis)) {
-      console.debug("[UI Settings] Applying Binance column visibility from server");
-      setBinanceColumnVisibility(binanceVis);
-    }
-  }, [serverUiSettings]);
 
   // backSplitPercent is no longer used (Binance Data is a single panel now), so we stop updating it.
 
@@ -3323,7 +3412,7 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
 
   return (
     <div className="fixed inset-0 flex flex-col bg-[#f5f6fa] dark:bg-[#0f0f0f] text-[#222] dark:text-white overflow-hidden w-full">
-      <div className="flex-none flex items-center justify-between gap-2 px-3 sm:px-4 py-2 bg-[#181818] text-white border-b border-gray-700 shadow-md">
+      <div className="flex-none flex items-center justify-between gap-2 px-3 sm:px-4 py-2 bg-[#181818] text-white border-b border-gray-700 shadow-md flex-wrap">
         <button
           type="button"
           onClick={() => navigate(-1)}
@@ -3331,10 +3420,10 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
         >
           ← Back
         </button>
-        <span className="font-semibold text-base sm:text-lg truncate">Live Trade — {stripHtml(row.Pair) || "N/A"}</span>
-        <div className="flex items-center gap-2 shrink-0">
+        <span className="font-semibold text-base sm:text-lg truncate min-w-0">Live Trade — {stripHtml(row.Pair) || "N/A"}</span>
+        <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
           <UserEmailDisplay />
-          <LogoutButton className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-semibold" />
+          <LogoutButton className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-semibold shrink-0" />
           <button
             type="button"
             onClick={() => setShowLayoutSettings(true)}

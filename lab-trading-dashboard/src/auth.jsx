@@ -8,14 +8,15 @@ import { api, getApiBaseUrl } from "./config";
 
 export const AuthContext = React.createContext(null);
 
-/** Use anywhere inside AuthContext.Provider to show a logout button */
+/** Use anywhere inside AuthContext.Provider to show a logout button. Uses triggerLogout when provided (shows 15 min countdown if enabled). */
 export function LogoutButton({ className = "", ...rest }) {
   const auth = React.useContext(AuthContext);
   if (!auth) return null;
+  const handleLogout = auth.triggerLogout || auth.logout;
   return (
     <button
       type="button"
-      onClick={auth.logout}
+      onClick={handleLogout}
       title="Log out"
       className={
         className ||
