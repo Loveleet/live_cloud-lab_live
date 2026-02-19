@@ -2760,6 +2760,7 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
     return null;
   });
   const serverSettingsAppliedRef = useRef(false);
+  const serverUiSettingsProfileIdRef = useRef(null); // which profile the current serverUiSettings were fetched for
   const [serverUiSettings, setServerUiSettings] = useState(null);
   const orderedKeys = fieldOrder && fieldOrder.length
     ? [...fieldOrder.filter((k) => allKeys.includes(k)), ...allKeys.filter((k) => !fieldOrder.includes(k))]
@@ -2872,6 +2873,7 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
     const q = activeProfileId != null ? `?theme_profile_id=${activeProfileId}` : "";
     const url = api("/api/ui-settings") + q;
     serverSettingsAppliedRef.current = false;
+    serverUiSettingsProfileIdRef.current = null; // clear until new fetch completes so we don't apply previous profile's data
     fetch(url)
       .then((res) => {
         if (!res.ok) {
@@ -2896,18 +2898,22 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
           }
         });
         if (list.length > 0) console.debug("[UI Settings] Loaded from server (profileId=" + activeProfileId + "):", Object.keys(map));
+        serverUiSettingsProfileIdRef.current = activeProfileId;
         setServerUiSettings(map);
       })
       .catch((err) => {
         console.warn("[UI Settings] Load error:", err?.message || err);
+        serverUiSettingsProfileIdRef.current = activeProfileId;
         setServerUiSettings({});
       });
     return () => { cancelled = true; };
   }, [activeProfileId]);
 
-  // Apply server settings when loaded for current profile; reset to defaults for keys not in this profile so we don't keep the previous profile's layout
+  // Apply server settings only when they were fetched for the current profile (avoids applying stale data from previous profile on re-renders)
   useEffect(() => {
-    if (serverUiSettings == null || serverSettingsAppliedRef.current) return;
+    if (serverUiSettings == null) return;
+    if (serverUiSettingsProfileIdRef.current !== activeProfileId) return;
+    if (serverSettingsAppliedRef.current) return;
     serverSettingsAppliedRef.current = true;
     const sectionArr = serverUiSettings[SECTION_ORDER_KEY];
     if (Array.isArray(sectionArr) && sectionArr.length === SECTION_IDS.length && SECTION_IDS.every((id) => sectionArr.includes(id))) {
@@ -2938,7 +2944,7 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
       console.debug("[UI Settings] Applying Binance column visibility from server");
       setBinanceColumnVisibility(binanceVis);
     }
-  }, [serverUiSettings]);
+  }, [serverUiSettings, activeProfileId]);
 
   // backSplitPercent is no longer used (Binance Data is a single panel now), so we stop updating it.
 
