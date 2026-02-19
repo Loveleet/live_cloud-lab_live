@@ -82,6 +82,8 @@ const SIGNAL_ALERT_RULES_KEY = "singleTradeLiveView_signalAlertRules";
 const ALERT_RULE_GROUPS_KEY = "singleTradeLiveView_alertRuleGroups";
 const MASTER_BLINK_COLOR_KEY = "singleTradeLiveView_masterBlinkColor";
 const ACTIVE_RULE_BOOK_ID_KEY = "singleTradeLiveView_activeRuleBookId";
+const LOCAL_RULE_BOOKS_KEY = "singleTradeLiveView_localRuleBooks";
+const ACTIVE_LOCAL_RULE_BOOK_ID_KEY = "singleTradeLiveView_activeLocalRuleBookId";
 const BINANCE_COLUMNS_ORDER_KEY = "singleTradeLiveView_binanceColumnsOrder";
 const BINANCE_COLUMNS_VISIBILITY_KEY = "singleTradeLiveView_binanceColumnsVisibility";
 const SECTION_IDS = ["information", "binanceData", "chart"];
@@ -923,6 +925,23 @@ function LiveTradeChartSection({
   });
   const [ruleBooksLoading, setRuleBooksLoading] = useState(false);
   const [ruleBooksError, setRuleBooksError] = useState("");
+  const [localRuleBooks, setLocalRuleBooks] = useState(() => {
+    try {
+      const raw = localStorage.getItem(LOCAL_RULE_BOOKS_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed?.books) ? parsed.books : [];
+    } catch {
+      return [];
+    }
+  });
+  const [selectedLocalRuleBookId, setSelectedLocalRuleBookId] = useState(() => {
+    try {
+      return localStorage.getItem(ACTIVE_LOCAL_RULE_BOOK_ID_KEY) || null;
+    } catch {
+      return null;
+    }
+  });
   const sortedAlertRules = useMemo(() => {
     const sorted = [...(alertRules || [])];
     sorted.sort((a, b) => {
@@ -1072,6 +1091,75 @@ function LiveTradeChartSection({
       }
     },
     [alertRules, alertRuleGroups, masterBlinkColor, serverRuleBooks, selectedRuleBookId]
+  );
+
+  const persistLocalRuleBooks = useCallback((books) => {
+    try {
+      localStorage.setItem(LOCAL_RULE_BOOKS_KEY, JSON.stringify({ books }));
+    } catch (_) {}
+  }, []);
+
+  const handleSaveLocalRuleBook = useCallback(
+    (mode) => {
+      if (!alertRules || !alertRules.length) {
+        window.alert("No rules to save. Create some rules first.");
+        return;
+      }
+      let name = "";
+      let id = null;
+      if (mode === "new") {
+        name = window.prompt("Enter a name for this rule book (saved on this device):");
+        if (!name || !name.trim()) return;
+        id = "local_" + Date.now();
+      } else if (mode === "update") {
+        const current = localRuleBooks.find((b) => b.id === selectedLocalRuleBookId);
+        if (!current) {
+          window.alert("No local rule book is selected to update.");
+          return;
+        }
+        name = current.name;
+        id = current.id;
+      } else return;
+
+      const book = {
+        id,
+        name: name.trim(),
+        createdAt: new Date().toISOString(),
+        rules: alertRules || [],
+        groups: alertRuleGroups || [],
+        masterBlinkColor: masterBlinkColor || "#f97316",
+      };
+      const nextBooks =
+        mode === "new"
+          ? [...localRuleBooks, book]
+          : localRuleBooks.map((b) => (b.id === id ? book : b));
+      setLocalRuleBooks(nextBooks);
+      persistLocalRuleBooks(nextBooks);
+      setSelectedLocalRuleBookId(id);
+      try {
+        localStorage.setItem(ACTIVE_LOCAL_RULE_BOOK_ID_KEY, String(id));
+      } catch {}
+      if (typeof window !== "undefined") {
+        window.alert(mode === "new" ? "Rule book saved on this device." : "Rule book updated on this device.");
+      }
+    },
+    [alertRules, alertRuleGroups, masterBlinkColor, localRuleBooks, selectedLocalRuleBookId, persistLocalRuleBooks]
+  );
+
+  const handleLoadLocalRuleBook = useCallback(
+    (id) => {
+      if (!id) return;
+      const book = localRuleBooks.find((b) => b.id === id);
+      if (!book) return;
+      setAlertRules(Array.isArray(book.rules) ? book.rules : []);
+      setAlertRuleGroups(Array.isArray(book.groups) ? book.groups : []);
+      setMasterBlinkColor(book.masterBlinkColor && /^#[0-9A-Fa-f]{6}$/.test(book.masterBlinkColor) ? book.masterBlinkColor : "#f97316");
+      setSelectedLocalRuleBookId(id);
+      try {
+        localStorage.setItem(ACTIVE_LOCAL_RULE_BOOK_ID_KEY, String(id));
+      } catch {}
+    },
+    [localRuleBooks, setAlertRules, setAlertRuleGroups, setMasterBlinkColor]
   );
 
   const handleExportAlertRules = useCallback(() => {
@@ -1362,7 +1450,56 @@ function LiveTradeChartSection({
               <span className="font-semibold text-violet-200">Interval</span> and{" "}
               <span className="font-semibold text-violet-200">Candle row</span> (current / prev / prior).
             </p>
-            {/* Server-side rule books */}
+            {/* Local rule books (no login required) */}
+            <div className="mb-4 p-3 rounded-xl bg-[#181818] border border-emerald-700/50 space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-semibold text-emerald-200">Rule books (saved on this device)</span>
+                <select
+                  className="bg-[#111] border border-gray-700 rounded px-2 py-1 text-[11px] min-w-[160px]"
+                  value={selectedLocalRuleBookId || ""}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (!v) {
+                      setSelectedLocalRuleBookId(null);
+                      try {
+                        localStorage.removeItem(ACTIVE_LOCAL_RULE_BOOK_ID_KEY);
+                      } catch {}
+                      return;
+                    }
+                    setSelectedLocalRuleBookId(v);
+                    handleLoadLocalRuleBook(v);
+                  }}
+                >
+                  <option value="">(None selected)</option>
+                  {localRuleBooks.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                <button
+                  type="button"
+                  className="px-2 py-1 rounded bg-emerald-700 hover:bg-emerald-600"
+                  onClick={() => handleSaveLocalRuleBook("new")}
+                >
+                  Save as new (this device)
+                </button>
+                <button
+                  type="button"
+                  className="px-2 py-1 rounded bg-blue-700 hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed"
+                  disabled={!selectedLocalRuleBookId}
+                  onClick={() => handleSaveLocalRuleBook("update")}
+                >
+                  Update selected (this device)
+                </button>
+                <span className="text-[11px] text-gray-400">
+                  Saved in this browser only. Works without logging in.
+                </span>
+              </div>
+            </div>
+            {/* Server-side rule books (requires login) */}
             <div className="mb-4 p-3 rounded-xl bg-[#181818] border border-violet-700/60 space-y-2">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-xs font-semibold text-violet-200">Rule books (saved on server)</span>
@@ -1404,10 +1541,10 @@ function LiveTradeChartSection({
               <div className="flex flex-wrap items-center gap-2 text-[11px]">
                 <button
                   type="button"
-                  className="px-2 py-1 rounded bg-emerald-700 hover:bg-emerald-600"
+                  className="px-2 py-1 rounded bg-violet-700 hover:bg-violet-600"
                   onClick={() => handleSaveRuleBook("new")}
                 >
-                  Save as new rule book
+                  Save as new (server)
                 </button>
                 <button
                   type="button"
@@ -1415,10 +1552,10 @@ function LiveTradeChartSection({
                   disabled={!selectedRuleBookId}
                   onClick={() => handleSaveRuleBook("update")}
                 >
-                  Update selected rule book
+                  Update selected (server)
                 </button>
                 <span className="text-[11px] text-gray-400">
-                  Rule books are stored in the server database and can be loaded from GitHub Pages or localhost.
+                  Requires login. Use &quot;Saved on this device&quot; above if you see Not logged in.
                 </span>
               </div>
             </div>
