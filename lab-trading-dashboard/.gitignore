@@ -18,6 +18,11 @@ secrets.env
 # Server with credentials — only on cloud; repo has server.example.js
 server/server.js
 
+# Python keys and DB credentials (do not commit; use *.example.py as template)
+python/utils/keys*.py
+!python/utils/keys1.example.py
+!python/utils/keys1_postgresql.example.py
+
 # IDE / OS
 .DS_Store
 *.log
