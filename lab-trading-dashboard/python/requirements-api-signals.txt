@@ -1,0 +1,24 @@
+# Dependencies for api_signals.py (and FinalVersionTrading_AWS.py) on the cloud.
+# Install TA-Lib C library on the server FIRST (see docs/CLOUD_API_SIGNALS_SETUP.md), then:
+#   pip install -r requirements-api-signals.txt
+#   pip install TA-Lib
+
+# API
+flask>=3.0
+python-telegram-bot>=20.0
+
+# Data & indicators
+pandas>=1.5
+numpy>=1.22
+ta>=0.11.0
+# TA-Lib: install C library first, then: pip install TA-Lib
+
+# Binance
+binance-futures-connector>=4.0
+
+# Database
+sqlalchemy>=2.0
+psycopg2-binary>=2.9
+
+# System
+psutil>=5.9
