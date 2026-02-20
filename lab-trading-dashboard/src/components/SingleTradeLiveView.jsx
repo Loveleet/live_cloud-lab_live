@@ -1003,9 +1003,16 @@ function LiveTradeChartSection({
           throw new Error(data.error || res.statusText || "Failed to load rule book");
         }
         const payload = data.payload || {};
-        const rules = Array.isArray(payload.rules) ? payload.rules : [];
-        const groups = Array.isArray(payload.groups) ? payload.groups : [];
+        let rules = Array.isArray(payload.rules) ? payload.rules : [];
+        let groups = Array.isArray(payload.groups) ? payload.groups : [];
         const masterColor = payload.masterBlinkColor || masterBlinkColor || "#f97316";
+        if (groups.length === 0 && rules.length > 0) {
+          const defaultGroupId = "imported-" + Date.now();
+          groups = [
+            { id: defaultGroupId, name: "Imported", color: masterColor },
+          ];
+          rules = rules.map((r) => ({ ...r, groupId: defaultGroupId }));
+        }
         setAlertRules(rules);
         setAlertRuleGroups(groups);
         setMasterBlinkColor(masterColor);
@@ -1151,8 +1158,21 @@ function LiveTradeChartSection({
       if (!id) return;
       const book = localRuleBooks.find((b) => b.id === id);
       if (!book) return;
-      setAlertRules(Array.isArray(book.rules) ? book.rules : []);
-      setAlertRuleGroups(Array.isArray(book.groups) ? book.groups : []);
+      let rules = Array.isArray(book.rules) ? book.rules : [];
+      let groups = Array.isArray(book.groups) ? book.groups : [];
+      if (groups.length === 0 && rules.length > 0) {
+        const defaultGroupId = "imported-" + Date.now();
+        groups = [
+          {
+            id: defaultGroupId,
+            name: "Imported",
+            color: book.masterBlinkColor && /^#[0-9A-Fa-f]{6}$/.test(book.masterBlinkColor) ? book.masterBlinkColor : "#f97316",
+          },
+        ];
+        rules = rules.map((r) => ({ ...r, groupId: defaultGroupId }));
+      }
+      setAlertRules(rules);
+      setAlertRuleGroups(groups);
       setMasterBlinkColor(book.masterBlinkColor && /^#[0-9A-Fa-f]{6}$/.test(book.masterBlinkColor) ? book.masterBlinkColor : "#f97316");
       setSelectedLocalRuleBookId(id);
       try {
@@ -1190,7 +1210,7 @@ function LiveTradeChartSection({
         window.alert("Failed to export rules. See console for details.");
       }
     }
-  }, [alertRules, alertRuleGroups]);
+  }, [alertRules, alertRuleGroups, masterBlinkColor]);
 
   const handleImportAlertRulesClick = useCallback(() => {
     if (importInputRef.current) {
@@ -1218,9 +1238,30 @@ function LiveTradeChartSection({
               window.alert("Invalid script file: expected an array of rules.");
               return;
             }
-            setAlertRules(rules);
-            const groups = Array.isArray(parsed?.groups) ? parsed.groups : [];
+            let groups = Array.isArray(parsed?.groups) ? parsed.groups : [];
+            let rulesToSet = rules;
+            if (groups.length === 0) {
+              const defaultGroupId = "imported-" + Date.now();
+              const defaultGroup = {
+                id: defaultGroupId,
+                name: "Imported",
+                color: parsed?.masterBlinkColor && /^#[0-9A-Fa-f]{6}$/.test(parsed.masterBlinkColor) ? parsed.masterBlinkColor : "#f97316",
+              };
+              groups = [defaultGroup];
+              rulesToSet = rules.map((r) => ({ ...r, groupId: defaultGroupId }));
+            } else {
+              const groupIds = new Set(groups.map((g) => g.id));
+              rulesToSet = rules.map((r) => {
+                if (r.groupId && groupIds.has(r.groupId)) return r;
+                const firstGroupId = groups[0]?.id;
+                return { ...r, groupId: firstGroupId || r.groupId };
+              });
+            }
+            setAlertRules(rulesToSet);
             setAlertRuleGroups(groups);
+            if (parsed?.masterBlinkColor && /^#[0-9A-Fa-f]{6}$/.test(parsed.masterBlinkColor)) {
+              setMasterBlinkColor(parsed.masterBlinkColor);
+            }
           } catch (err) {
             console.error("[AlertRules] Import parse error:", err);
             window.alert("Failed to parse script file. See console for details.");
@@ -1234,7 +1275,7 @@ function LiveTradeChartSection({
         }
       }
     },
-    [setAlertRules, setAlertRuleGroups]
+    [setAlertRules, setAlertRuleGroups, setMasterBlinkColor]
   );
 
   useEffect(() => {
@@ -3159,6 +3200,7 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
         type: "lab_single_trade_alert_rules",
         version: 2,
         createdAt: new Date().toISOString(),
+        masterBlinkColor: masterBlinkColor || "#f97316",
         rules: alertRules || [],
         groups: alertRuleGroups || [],
       };
@@ -3179,7 +3221,7 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
         window.alert("Failed to export rules. See console for details.");
       }
     }
-  }, [alertRules, alertRuleGroups]);
+  }, [alertRules, alertRuleGroups, masterBlinkColor]);
 
   const handleImportAlertRulesClick = useCallback(() => {
     if (importInputRef.current) {
@@ -3206,8 +3248,26 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
             window.alert("Invalid script file: expected an array of rules.");
             return;
           }
-          setAlertRules(rules);
-          const groups = Array.isArray(parsed?.groups) ? parsed.groups : [];
+          let groups = Array.isArray(parsed?.groups) ? parsed.groups : [];
+          let rulesToSet = rules;
+          if (groups.length === 0) {
+            const defaultGroupId = "imported-" + Date.now();
+            const defaultGroup = {
+              id: defaultGroupId,
+              name: "Imported",
+              color: parsed?.masterBlinkColor && /^#[0-9A-Fa-f]{6}$/.test(parsed.masterBlinkColor) ? parsed.masterBlinkColor : "#f97316",
+            };
+            groups = [defaultGroup];
+            rulesToSet = rules.map((r) => ({ ...r, groupId: defaultGroupId }));
+          } else {
+            const groupIds = new Set(groups.map((g) => g.id));
+            rulesToSet = rules.map((r) => {
+              if (r.groupId && groupIds.has(r.groupId)) return r;
+              const firstGroupId = groups[0]?.id;
+              return { ...r, groupId: firstGroupId || r.groupId };
+            });
+          }
+          setAlertRules(rulesToSet);
           setAlertRuleGroups(groups);
           if (parsed?.masterBlinkColor && /^#[0-9A-Fa-f]{6}$/.test(parsed.masterBlinkColor)) {
             setMasterBlinkColor(parsed.masterBlinkColor);
