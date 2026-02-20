@@ -35,7 +35,8 @@ jobs:
       - name: Install and build
         working-directory: lab-trading-dashboard
         env:
-          VITE_API_BASE_URL: ${{ secrets.API_BASE_URL || 'http://150.241.244.130:10000' }}
+          # Set API_BASE_URL in repo Secrets and variables → Actions so GitHub Pages can reach your cloud.
+          VITE_API_BASE_URL: ${{ secrets.API_BASE_URL || '' }}
           VITE_BASE_PATH: /${{ github.event.repository.name }}/
         run: |
           npm ci
@@ -46,9 +47,9 @@ jobs:
         run: |
           node -e "
           const fs = require('fs');
-          const url = (process.env.API_BASE_URL || 'http://150.241.244.130:10000').replace(/\/$/, '');
+          const url = (process.env.API_BASE_URL || '').replace(/\/$/, '');
           fs.writeFileSync('dist/api-config.json', JSON.stringify({ apiBaseUrl: url, tunnelUrl: url }));
-          console.log('Wrote api-config.json with apiBaseUrl:', url);
+          console.log('Wrote api-config.json with apiBaseUrl:', url || '(none — set API_BASE_URL secret)');
           "
         env:
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
