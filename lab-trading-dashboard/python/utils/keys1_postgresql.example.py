@@ -1,3 +1,4 @@
+kk
 # Copy to keys1_postgresql.py and fill in real values. Do NOT commit keys1_postgresql.py (it is in .gitignore).
 
 # Binance API (same as keys1.example.py if needed)
