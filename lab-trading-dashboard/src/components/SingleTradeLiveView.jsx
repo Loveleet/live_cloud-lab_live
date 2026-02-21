@@ -3621,6 +3621,15 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
                     const groupColors = isIntervalWise ? INTERVAL_GROUP_COLORS : ROW_GROUP_COLORS;
                     const getGroupColor = (groupIndex) => groupColors[groupIndex] ?? "";
 
+                    // API may return keys with different casing (e.g. HA_LOW vs ha_low); match case-insensitively so all data shows
+                    const getSignalCellValue = (row, key) => {
+                      if (row == null || typeof row !== "object") return undefined;
+                      if (Object.prototype.hasOwnProperty.call(row, key) && row[key] !== undefined) return row[key];
+                      const kLower = String(key).toLowerCase();
+                      const entry = Object.entries(row).find(([k]) => k != null && String(k).toLowerCase() === kLower);
+                      return entry ? entry[1] : undefined;
+                    };
+
                     const matchesRuleValue = (rule, v) => {
                       if (!rule) return false;
 
@@ -3699,7 +3708,7 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
                         columns.forEach((col) => {
                           const summary = signalsData.intervals[col.iv]?.summary;
                           const rows = Array.isArray(summary) ? summary : [];
-                          const v = rows[col.rowIdx]?.[key];
+                          const v = getSignalCellValue(rows[col.rowIdx], key);
                           const matching = alertRules.filter(
                             (rule) =>
                               rule &&
@@ -3748,7 +3757,7 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
                               {columns.map((col, idx) => {
                                 const summary = signalsData.intervals[col.iv]?.summary;
                                 const rows = Array.isArray(summary) ? summary : [];
-                                const v = rows[col.rowIdx]?.[key];
+                                const v = getSignalCellValue(rows[col.rowIdx], key);
                                 const str = v != null ? (typeof v === "number" ? (Number.isInteger(v) ? String(v) : v.toFixed?.(4) ?? String(v)) : String(v)) : "—";
                                 const cellBg = getGroupColor(col.groupIndex);
                                 const matchingRules = (() => {
