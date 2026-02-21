@@ -3863,7 +3863,32 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
             >
               <div className="flex flex-col gap-2 mb-2 flex-wrap justify-center p-2 overflow-auto w-full">
                 {!isExistInExchange ? (
-                  <span className="text-gray-500 dark:text-white text-center">Trade not in exchange — no live data</span>
+                  <div className="w-full max-w-2xl mx-auto space-y-3">
+                    <p className="text-gray-500 dark:text-gray-400 text-center text-sm">Trade not in exchange — no live position data. Summary below.</p>
+                    <div className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-[#1a1a1a] overflow-hidden">
+                      <table className="w-full border-collapse text-left text-sm">
+                        <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                          {[
+                            ["Pair", row.Pair],
+                            ["Unique ID", row.Unique_ID],
+                            ["Investment", row.Investment],
+                            ["P/L", row.PL],
+                            ["Type", row.Type],
+                            ["Stop price", row.Stop_Price],
+                            ["MACD action", row.macd_action ?? row.MACD_ACTION],
+                            ["Candle", row["Candle_🕒"]],
+                            ["Fetcher", row["Fetcher_🕒"]],
+                          ].filter(([, v]) => v != null && String(stripHtml(String(v))).trim() !== "").map(([label, value]) => (
+                            <tr key={label} className="bg-gray-50/50 dark:bg-[#252525]/50">
+                              <th className="px-3 py-1.5 font-medium text-gray-700 dark:text-gray-300 w-32">{label}</th>
+                              <td className="px-3 py-1.5 text-gray-900 dark:text-white">{typeof value === "string" ? stripHtml(value) : value}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <p className="text-gray-500 dark:text-gray-400 text-center text-xs">Live Binance position data will appear here when the trade is in the exchange.</p>
+                  </div>
                 ) : exchangePositionData?.ok === false ? (
                   <span className="text-amber-600 dark:text-amber-400 text-center">{exchangePositionData?.error || "Failed to fetch"}</span>
                 ) : hasBinancePositions ? (
