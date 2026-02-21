@@ -55,6 +55,20 @@ const getRobustSymbol = (pair) => {
   return symbol || "BTCUSDT";
 };
 
+/** Extract trading pair (e.g. UNIUSDT) from unique_id like "UNIUSDTBUY2026-02-21..." so signals API gets the right symbol when trade is missing from DB. */
+const getSymbolFromUniqueId = (uid) => {
+  if (!uid || typeof uid !== "string") return "";
+  const u = String(uid).toUpperCase();
+  const buy = u.indexOf("BUY");
+  const sell = u.indexOf("SELL");
+  let end = -1;
+  if (buy >= 0 && sell >= 0) end = Math.min(buy, sell);
+  else if (buy >= 0) end = buy;
+  else if (sell >= 0) end = sell;
+  if (end > 0) return String(uid).slice(0, end).replace(/[^A-Z0-9]/gi, "").toUpperCase() || "";
+  return "";
+};
+
 const INDICATORS = [
   { key: "RSI@tv-basicstudies", label: "RSI-9" },
   { key: "MACD@tv-basicstudies", label: "MACD" },
@@ -2858,8 +2872,8 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
   }, [uniqueId]);
 
   // Call Python CalculateSignals(symbol, interval, candle) every 5 minutes for current trade pair
-  const tradePair = rawTrade?.pair || stripHtml(row.Pair) || "";
-  const signalSymbol = getRobustSymbol(tradePair);
+  const tradePair = rawTrade?.pair || stripHtml(row.Pair) || getSymbolFromUniqueId(uniqueId) || "";
+  const signalSymbol = (tradePair && getRobustSymbol(tradePair)) || getSymbolFromUniqueId(uniqueId) || "BTCUSDT";
   const [signalsData, setSignalsData] = useState(null);
   const SIGNAL_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
   useEffect(() => {

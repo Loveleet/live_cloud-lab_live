@@ -632,9 +632,24 @@ const LiveTradeViewPage = () => {
     s = s.replace(/PERPETUALCONTRACT|PERP|CHART/gi, '').replace(/\d{6,}$/, '');
     return s || '';
   };
+  const getSymbolFromUniqueId = (id) => {
+    if (!id || typeof id !== 'string') return '';
+    const u = String(id).toUpperCase();
+    const buy = u.indexOf('BUY');
+    const sell = u.indexOf('SELL');
+    let end = -1;
+    if (buy >= 0 && sell >= 0) end = Math.min(buy, sell);
+    else if (buy >= 0) end = buy;
+    else if (sell >= 0) end = sell;
+    if (end > 0) return String(id).slice(0, end).replace(/[^A-Z0-9]/gi, '').toUpperCase() || '';
+    return '';
+  };
   const signalSymbol = useMemo(() => {
-    const pair = trades[0]?.pair ?? trades[0]?.Pair ?? uid ?? '';
-    return getRobustSymbol(pair);
+    const fromTrade = getRobustSymbol(trades[0]?.pair ?? trades[0]?.Pair ?? '');
+    if (fromTrade) return fromTrade;
+    const fromUid = getSymbolFromUniqueId(uid);
+    if (fromUid) return fromUid;
+    return getRobustSymbol(uid) || '';
   }, [trades, uid]);
   const SIGNAL_INTERVAL_MS = 5 * 60 * 1000;
   const [signalsData, setSignalsData] = useState(null);
