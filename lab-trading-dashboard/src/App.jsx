@@ -2140,7 +2140,6 @@ useEffect(() => {
 
           const lastUpdatedDisplay = getTimeAgo(emaTrends.last_updated);
           console.log("Last Update Time:", lastUpdatedDisplay);
-          console.log("Last Update Time:", {last_updated});
           return (
             <>
               <EmaCell header="Last Update Time" value={lastUpdatedDisplay ?? "—"} />
