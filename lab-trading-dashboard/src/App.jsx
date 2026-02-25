@@ -2063,19 +2063,24 @@ useEffect(() => {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 flex-1 min-w-[280px]">
         {(() => {
           const getTimeAgo = (lastUpdated) => {
-            if (lastUpdated == null || lastUpdated === "") return "—";
-            let utcStr = String(lastUpdated).trim();
-            if (!/Z$|[+-]\d{2}:?\d{2}$/.test(utcStr)) utcStr = utcStr.replace(" ", "T") + "Z";
-            const t = new Date(utcStr).getTime();
-            if (Number.isNaN(t)) return String(lastUpdated);
-            const diffMs = Date.now() - t;
-            const diffSec = Math.floor(diffMs / 1000);
-            const diffMin = Math.floor(diffSec / 60);
-            const diffHours = Math.floor(diffMin / 60);
-            if (diffSec < 60) return `${diffSec} sec ago`;
-            if (diffMin < 60) return `${diffMin} min ago`;
-            if (diffHours < 24) return `${diffHours} hr ago`;
-            return `${Math.floor(diffHours / 24)} days ago`;
+            try {
+              if (lastUpdated == null || lastUpdated === "") return "—";
+              let utcStr = String(lastUpdated).trim();
+              if (!utcStr) return "—";
+              if (!/Z$|[+-]\d{2}:?\d{2}$/.test(utcStr)) utcStr = utcStr.replace(" ", "T") + "Z";
+              const t = new Date(utcStr).getTime();
+              if (Number.isNaN(t)) return "—";
+              const diffMs = Date.now() - t;
+              const diffSec = Math.floor(diffMs / 1000);
+              const diffMin = Math.floor(diffSec / 60);
+              const diffHours = Math.floor(diffMin / 60);
+              if (diffSec < 60) return `${diffSec} sec ago`;
+              if (diffMin < 60) return `${diffMin} min ago`;
+              if (diffHours < 24) return `${diffHours} hr ago`;
+              return `${Math.floor(diffHours / 24)} days ago`;
+            } catch {
+              return "—";
+            }
           };
           const pctColor = (valNum, isBull, isBear) => {
             const v = Number(valNum);
@@ -2112,7 +2117,7 @@ useEffect(() => {
               : "text-black dark:text-white";
             const displayValue = pct != null && pct !== ""
               ? `${(trendText || "").trim()} ${!Number.isNaN(val) ? val.toFixed(2) : pct}%`
-              : (value || "—");
+              : (typeof value !== "undefined" && value !== null && String(value).trim() !== "" ? String(value).trim() : "—");
 
             return (
               <div className={`${baseBox} ${hotDecor}`.trim()}>
@@ -2137,7 +2142,7 @@ useEffect(() => {
           console.log("Last Update Time:", lastUpdatedDisplay);
           return (
             <>
-              <EmaCell header="Last Update Time" value={lastUpdatedDisplay} />
+              <EmaCell header="Last Update Time" value={lastUpdatedDisplay ?? "—"} />
               <EmaCell
                 header="EMA 1m"
                 trendText={emaTrends.overall_ema_trend_1m}
