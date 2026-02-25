@@ -2052,7 +2052,7 @@ useEffect(() => {
   </div>
 
   {/* SuperTrend + EMA group (inline if space; wraps under if not) */}
-  <div className="flex flex-wrap items-start gap-4 flex-1 min-w-[280px]">
+  <div className=" flex flex-wrap items-start gap-4 flex-1 min-w-[280px]">
     {/* SuperTrend: fixed width on sm+; full width on xs */}
     <div className="w-full sm:w-[300px] md:w-[360px] shrink-0">
       <SuperTrendPanel data={superTrendData} />
@@ -2133,9 +2133,11 @@ useEffect(() => {
             );
           };
 
+          const lastUpdatedDisplay = getTimeAgo(emaTrends.last_updated);
+          console.log("Last Update Time:", lastUpdatedDisplay);
           return (
             <>
-              <EmaCell header="Last Update Time" value={getTimeAgo(emaTrends.last_updated)} />
+              <EmaCell header="Last Update Time" value={lastUpdatedDisplay} />
               <EmaCell
                 header="EMA 1m"
                 trendText={emaTrends.overall_ema_trend_1m}
