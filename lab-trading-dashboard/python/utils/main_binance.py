@@ -111,6 +111,24 @@ def _send_telegram_critical(message, exc=None):
             pass
 
 
+def _send_telegram_failure(operation_name, error_message):
+    """Send Telegram alert when an operation failed (Binance/execution error)."""
+    try:
+        _python_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if _python_dir not in sys.path:
+            sys.path.insert(0, _python_dir)
+        from telegram_message_sender import send_message_to_users
+        import asyncio
+        text = f"⚠️ Tried to execute but failed. {operation_name}. Binance returned this error: {error_message}. Alert"
+        asyncio.run(send_message_to_users(text))
+    except Exception as e:
+        try:
+            with open(_MAIN_BINANCE_LOG_FILE, "a", encoding="utf-8") as f:
+                f.write(f"[{datetime.datetime.now(datetime.timezone.utc)}] _send_telegram_failure: {e}\n")
+        except Exception:
+            pass
+
+
 def retry_um_futures(critical_on_final_failure=True):
     """
     Decorator: retry UMFutures calls up to MAX_RETRY_COUNT times with RETRY_DELAY_SEC delay.
@@ -277,17 +295,34 @@ try:
             if quantity is None or float(quantity) <= 0:
                 return {"status": "already_closed", "symbol": symbol, "positionSide": pos_side}
 
-            return client.new_order(
+            result = client.new_order(
                 symbol=symbol,
                 side=close_side,
                 positionSide=pos_side,
                 type="MARKET",
                 quantity=quantity,
             )
+            # Notify Telegram on success
+            try:
+                _python_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                if _python_dir not in sys.path:
+                    sys.path.insert(0, _python_dir)
+                from telegram_message_sender import send_message_to_users
+                import asyncio
+                text = f"Hedge position closed: {symbol} ({pos_side}), quantity: {quantity}"
+                asyncio.run(send_message_to_users(text))
+            except Exception as e:
+                try:
+                    with open(_MAIN_BINANCE_LOG_FILE, "a", encoding="utf-8") as f:
+                        f.write(f"[{datetime.datetime.now(datetime.timezone.utc)}] close_hedge_position Telegram: {e}\n")
+                except Exception:
+                    pass
+            return result
         except ValueError:
             raise
         except Exception as e:
             _log_error(f"close_hedge_position({symbol} {position_side}): {e}", critical=True, exc=e)
+            _send_telegram_failure("close_hedge_position", str(e))
             return {"ok": False, "message": str(e)}
 
     @retry_um_futures(critical_on_final_failure=True)
@@ -413,9 +448,9 @@ try:
         Returns the order response dict from Binance.
         """
         try:
-            return {"ok": False, "message": f'Place Order Not Implemented {symbol} {side} {posSide} {qty}'}
-            # output= client.new_order(symbol=symbol, side=side,positionSide=posSide, type='MARKET', quantity=qty,recvWindow=5000)
-            # return output
+            # return {"ok": False, "message": f'Place Order Not Implemented {symbol} {side} {posSide} {qty}'}
+            output= client.new_order(symbol=symbol, side=side,positionSide=posSide, type='MARKET', quantity=qty,recvWindow=5000)
+            return output
         except Exception as e:
             _log_error(f"HedgeModePlaceOrder({symbol} {side} {posSide} {qty}): {e}", critical=True, exc=e)
             return {"ok": False, "message": str(e)}
@@ -602,29 +637,98 @@ try:
         """
         Place a new hedge order: getQuantity(symbol, invest) -> quantity, then HedgeModePlaceOrder,
         then setHedgeStopLoss for the position. position_side is LONG or SHORT.
-        Returns order response dict or {"ok": False, "message": "..."} on error.
+        Enforces max total investment (MAX_INVESTMENT_USDT) per symbol/position_side.
+        Returns order response dict or {"ok": False, "message": "...", "current_invested", "max_additional"} on error.
         """
-        return {"ok": False, "message": f'NewOrderPlace Not Implemented {symbol} {invest} {stop_price} {position_side}'}
-        # quantity, _, _ = getQuantity(symbol, float(invest))
-        # if quantity is None or quantity <= 0:
-        #     return {"ok": False, "message": "Could not compute quantity for this investment"}
-        # pos_side = (position_side or 'LONG').upper()
-        # if pos_side not in ('LONG', 'SHORT'):
-        #     return {"ok": False, "message": "position_side must be LONG or SHORT"}
-        # side = 'BUY' if pos_side == 'LONG' else 'SELL'
-        # order_out = HedgeModePlaceOrder(symbol, side, pos_side, quantity)
-        # if isinstance(order_out, dict) and order_out.get('ok') is False:
-        #     return order_out
-        # close_side = 'SELL' if pos_side == 'LONG' else 'BUY'
-        # try:
-        #     stop_price_f = float(stop_price)
-        # except (TypeError, ValueError):
-        #     return {"ok": False, "message": "stop_price must be a number"}
-        # sl_out = setHedgeStopLoss(symbol, stop_price_f, close_side, pos_side)
-        # if isinstance(sl_out, dict) and sl_out.get('ok') is False:
-        #     _log_error(f"NewOrderPlace setHedgeStopLoss({symbol}): {sl_out.get('message', '')}", critical=False)
-        #     # Order was placed; return success but caller may see stop-loss as failed if needed
-        # return order_out if isinstance(order_out, dict) else {"ok": True, "order": order_out}
+        pos_side = (position_side or 'LONG').strip().upper()
+        if pos_side not in ('LONG', 'SHORT'):
+            out = {"ok": False, "message": "position_side must be LONG or SHORT"}
+            _send_telegram_failure("NewOrderPlace", out.get("message", ""))
+            return out
+        limit_check = check_max_investment(symbol, pos_side, float(invest))
+        if isinstance(limit_check, dict) and limit_check.get("ok") is False:
+            _send_telegram_failure("NewOrderPlace", limit_check.get("message", str(limit_check)))
+            return limit_check
+        quantity, _, _ = getQuantity(symbol, float(invest))
+        if quantity is None or quantity <= 0:
+            out = {"ok": False, "message": "Could not compute quantity for this investment"}
+            _send_telegram_failure("NewOrderPlace", out.get("message", ""))
+            return out
+        side = 'BUY' if pos_side == 'LONG' else 'SELL'
+        order_out = HedgeModePlaceOrder(symbol, side, pos_side, quantity)
+        if isinstance(order_out, dict) and order_out.get('ok') is False:
+            _send_telegram_failure("NewOrderPlace", order_out.get("message", str(order_out)))
+            return order_out
+        close_side = 'SELL' if pos_side == 'LONG' else 'BUY'
+        try:
+            stop_price_f = float(stop_price)
+        except (TypeError, ValueError):
+            out = {"ok": False, "message": "stop_price must be a number"}
+            _send_telegram_failure("NewOrderPlace", out.get("message", ""))
+            return out
+        sl_out = setHedgeStopLoss(symbol, stop_price_f, close_side, pos_side)
+        if isinstance(sl_out, dict) and sl_out.get('ok') is False:
+            _log_error(f"NewOrderPlace setHedgeStopLoss({symbol}): {sl_out.get('message', '')}", critical=False)
+            # Order was placed; return success but caller may see stop-loss as failed if needed
+        # Notify Telegram on success
+        try:
+            _python_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            if _python_dir not in sys.path:
+                sys.path.insert(0, _python_dir)
+            from telegram_message_sender import send_message_to_users
+            import asyncio
+            text = f"New order placed: {symbol} ({pos_side}), invest: {float(invest):.0f}, stop: {stop_price_f}"
+            asyncio.run(send_message_to_users(text))
+        except Exception as e:
+            try:
+                with open(_MAIN_BINANCE_LOG_FILE, "a", encoding="utf-8") as f:
+                    f.write(f"[{datetime.datetime.now(datetime.timezone.utc)}] NewOrderPlace Telegram: {e}\n")
+            except Exception:
+                pass
+        return order_out if isinstance(order_out, dict) else {"ok": True, "order": order_out}
+
+    def add_investment(symbol, position_side, amount_usdt):
+        """
+        Add investment to an existing position: enforces max total (MAX_INVESTMENT_USDT), then
+        getQuantity(symbol, amount_usdt) -> HedgeModePlaceOrder. position_side is LONG or SHORT.
+        Returns order response or {"ok": False, "message": "...", "current_invested", "max_additional"} on error.
+        """
+        pos_side = (position_side or 'LONG').strip().upper()
+        if pos_side not in ('LONG', 'SHORT'):
+            out = {"ok": False, "message": "position_side must be LONG or SHORT"}
+            _send_telegram_failure("add_investment", out.get("message", ""))
+            return out
+        limit_check = check_max_investment(symbol, pos_side, float(amount_usdt))
+        if isinstance(limit_check, dict) and limit_check.get("ok") is False:
+            _send_telegram_failure("add_investment", limit_check.get("message", str(limit_check)))
+            return limit_check
+        quantity, _, _ = getQuantity(symbol, float(amount_usdt))
+        if quantity is None or quantity <= 0:
+            out = {"ok": False, "message": "Could not compute quantity for this amount"}
+            _send_telegram_failure("add_investment", out.get("message", ""))
+            return out
+        side = 'BUY' if pos_side == 'LONG' else 'SELL'
+        result = HedgeModePlaceOrder(symbol, side, pos_side, quantity)
+        if isinstance(result, dict) and result.get('ok') is False:
+            _send_telegram_failure("add_investment", result.get("message", str(result)))
+            return result
+        # Notify Telegram on success
+        try:
+            _python_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            if _python_dir not in sys.path:
+                sys.path.insert(0, _python_dir)
+            from telegram_message_sender import send_message_to_users
+            import asyncio
+            amount_f = float(amount_usdt)
+            text = f"New Investment {amount_f:.0f} Added to Pair {symbol} ({pos_side})"
+            asyncio.run(send_message_to_users(text))
+        except Exception as e:
+            try:
+                with open(_MAIN_BINANCE_LOG_FILE, "a", encoding="utf-8") as f:
+                    f.write(f"[{datetime.datetime.now(datetime.timezone.utc)}] add_investment Telegram: {e}\n")
+            except Exception:
+                pass
+        return {"ok": True, "order": result, "quantity": quantity, "amount": float(amount_usdt)}
 
     @retry_um_futures(critical_on_final_failure=True)
     def closeOrder(symbol):
@@ -642,6 +746,55 @@ try:
             return {"ok": False, "message": str(e)}
         except Exception as e:
             _log_error(f"closeOrder({symbol}): {e}", critical=True, exc=e)
+            return {"ok": False, "message": str(e)}
+
+    @retry_um_futures(critical_on_final_failure=True)
+    def partial_close_position(symbol, quantity, position_side):
+        """
+        Partially close a position by reducing quantity. Hedge mode: opposite side for the given positionSide.
+        quantity: amount to close (positive number). position_side: LONG or SHORT.
+        Returns order response dict or {"ok": False, "message": "..."}.
+        """
+        try:
+            qty = float(quantity)
+            if qty <= 0:
+                out = {"ok": False, "message": "Quantity must be positive"}
+                _send_telegram_failure("partial_close_position", out.get("message", ""))
+                return out
+            prec = get_qty_precision(symbol)
+            if prec is not None:
+                qty = round(qty, prec)
+            pos_side = (position_side or "BOTH").strip().upper()
+            if pos_side not in ("LONG", "SHORT"):
+                out = {"ok": False, "message": "position_side must be LONG or SHORT"}
+                _send_telegram_failure("partial_close_position", out.get("message", ""))
+                return out
+            if pos_side == "LONG":
+                order = HedgeModePlaceOrder(symbol, "SELL", "LONG", qty)
+            else:
+                order = HedgeModePlaceOrder(symbol, "BUY", "SHORT", qty)
+            if isinstance(order, dict) and order.get("ok") is False:
+                _send_telegram_failure("partial_close_position", order.get("message", str(order)))
+                return order
+            # Notify Telegram on success
+            try:
+                _python_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                if _python_dir not in sys.path:
+                    sys.path.insert(0, _python_dir)
+                from telegram_message_sender import send_message_to_users
+                import asyncio
+                text = f"Partial close: {symbol} ({pos_side}), quantity: {qty}"
+                asyncio.run(send_message_to_users(text))
+            except Exception as e:
+                try:
+                    with open(_MAIN_BINANCE_LOG_FILE, "a", encoding="utf-8") as f:
+                        f.write(f"[{datetime.datetime.now(datetime.timezone.utc)}] partial_close_position Telegram: {e}\n")
+                except Exception:
+                    pass
+            return order if isinstance(order, dict) else {"ok": True, "order": order}
+        except Exception as e:
+            _log_error(f"partial_close_position({symbol}): {e}", critical=True, exc=e)
+            _send_telegram_failure("partial_close_position", str(e))
             return {"ok": False, "message": str(e)}
 
     @retry_um_futures(critical_on_final_failure=False)
@@ -676,6 +829,53 @@ try:
         except Exception as e:
             _log_error(f"getOpenPosition({symbol}): {e}", exc=e)
             return []
+
+    MAX_INVESTMENT_USDT = 2500
+
+    def get_current_invested_usdt(symbol, position_side=None):
+        """
+        Sum current position notional (invested) in USDT for symbol, optionally for one position_side (LONG/SHORT).
+        Uses abs(positionAmt) * entryPrice from getOpenPosition. Returns 0.0 on error or no position.
+        """
+        try:
+            positions = getOpenPosition(symbol)
+            if not positions:
+                return 0.0
+            total = 0.0
+            for entry in positions:
+                ps = (entry.get("positionSide") or "BOTH").strip().upper()
+                if position_side is not None and position_side != "BOTH" and ps != position_side:
+                    continue
+                amt = float(entry.get("positionAmt", 0.0))
+                entry_price = float(entry.get("entryPrice", 0.0))
+                total += abs(amt) * entry_price
+            return round(total, 2)
+        except Exception as e:
+            _log_error(f"get_current_invested_usdt({symbol}): {e}", exc=e)
+            return 0.0
+
+    def check_max_investment(symbol, position_side, additional_amount_usdt):
+        """
+        Enforce max total investment (MAX_INVESTMENT_USDT). If current + additional > max, return error dict.
+        Returns: {"ok": True} or {"ok": False, "message": "...", "current_invested": float, "max_additional": float}.
+        """
+        try:
+            current = get_current_invested_usdt(symbol, position_side)
+            max_allowed = MAX_INVESTMENT_USDT
+            new_total = current + float(additional_amount_usdt)
+            if new_total > max_allowed:
+                max_additional = max(0.0, round(max_allowed - current, 2))
+                return {
+                    "ok": False,
+                    "message": f"Max investment is {max_allowed}. Already invested {current}. You can add up to {max_additional}.",
+                    "current_invested": current,
+                    "max_additional": max_additional,
+                    "max_investment": max_allowed,
+                }
+            return {"ok": True}
+        except Exception as e:
+            _log_error(f"check_max_investment({symbol}): {e}", exc=e)
+            return {"ok": False, "message": str(e)}
 
     @retry_um_futures(critical_on_final_failure=False)
     def getAllOpenPosition():

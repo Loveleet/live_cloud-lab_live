@@ -141,11 +141,19 @@ const App = () => {
 
   const [superTrendData, setSuperTrendData] = useState([]);
   const [emaTrends, setEmaTrends] = useState(null);
+  const [timeAgoTick, setTimeAgoTick] = useState(0); // tick every 1 min to refresh "X min ago" for last_updated
   const [activeLossFlags, setActiveLossFlags] = useState(null);
   // Expose superTrendData for focused debugging (must be at top level, not inside render logic)
   useEffect(() => {
     window._superTrendData = superTrendData;
   }, [superTrendData]);
+
+  // Refresh "X min ago" for pairstatus last_updated every minute
+  useEffect(() => {
+    if (!emaTrends) return;
+    const id = setInterval(() => setTimeAgoTick((t) => t + 1), 60 * 1000);
+    return () => clearInterval(id);
+  }, [emaTrends]);
   const [metrics, setMetrics] = useState(null);
   const [selectedBox, setSelectedBox] = useState(null);
   const [tradeData, setTradeData] = useState([]);
@@ -479,9 +487,9 @@ const [selectedIntervals, setSelectedIntervals] = useState(() => {
       const superTrendJson = superTrendRes.ok ? await superTrendRes.json() : { supertrend: [] };
       setSuperTrendData(Array.isArray(superTrendJson.supertrend) ? superTrendJson.supertrend : []);
 
-      // Fetch EMA trend data
+      // Fetch EMA trend data (cache-bust so last_updated is fresh)
       console.log("[API DEBUG] fetch /api/pairstatus");
-      const emaRes = await apiFetch("/api/pairstatus");
+      const emaRes = await apiFetch(`/api/pairstatus?_=${Date.now()}`);
       const emaJson = emaRes.ok ? await emaRes.json() : null;
       setEmaTrends(emaJson);
 
@@ -2050,11 +2058,25 @@ useEffect(() => {
       <SuperTrendPanel data={superTrendData} />
     </div>
 
-    {/* EMA Grid */}
+    {/* EMA Grid — all 4 aligned: header on top, value below */}
     {emaTrends && (
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 flex-1 min-w-[280px]">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 flex-1 min-w-[280px]">
         {(() => {
-          // Smooth color from white -> target before 90 (light ramp), full at 90+
+          const getTimeAgo = (lastUpdated) => {
+            if (lastUpdated == null || lastUpdated === "") return "—";
+            let utcStr = String(lastUpdated).trim();
+            if (!/Z$|[+-]\d{2}:?\d{2}$/.test(utcStr)) utcStr = utcStr.replace(" ", "T") + "Z";
+            const t = new Date(utcStr).getTime();
+            if (Number.isNaN(t)) return String(lastUpdated);
+            const diffMs = Date.now() - t;
+            const diffSec = Math.floor(diffMs / 1000);
+            const diffMin = Math.floor(diffSec / 60);
+            const diffHours = Math.floor(diffMin / 60);
+            if (diffSec < 60) return `${diffSec} sec ago`;
+            if (diffMin < 60) return `${diffMin} min ago`;
+            if (diffHours < 24) return `${diffHours} hr ago`;
+            return `${Math.floor(diffHours / 24)} days ago`;
+          };
           const pctColor = (valNum, isBull, isBear) => {
             const v = Number(valNum);
             if (Number.isNaN(v)) return { color: "rgb(255,255,255)" };
@@ -2067,91 +2089,45 @@ useEffect(() => {
             return { color: `rgb(${r}, ${g}, ${b})` };
           };
 
-          const EmaBox = ({ minsLabelFull, minsLabelShort, minsLabelTiny, trendText, pct }) => {
+          const EmaCell = ({ header, value, trendText, pct }) => {
             const val = Number(pct);
             const trend = (trendText || "").toLowerCase();
             const isBull = trend.includes("bull");
             const isBear = trend.includes("bear");
-            const hot = !Number.isNaN(val) && val >= 90;
-
-            // Base bluish bg
+            const hot = pct != null && pct !== "" && !Number.isNaN(val) && val >= 90;
             const baseBox =
-              "w-full min-w-0 flex items-center justify-between px-3 md:px-4 lg:px-5 py-2 md:py-2.5 lg:py-3 rounded-lg border transition-all duration-200 ease-out " +
-              "bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-900";
-
-            // Hot (≥90): tint + ring + shadow + scale + slight blink
+              "w-full min-w-0 flex flex-col rounded-lg border transition-all duration-200 ease-out " +
+              "bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-900 " +
+              "px-3 py-2 md:px-4 md:py-2.5";
             const hotDecor = hot
               ? isBear
-                ? " bg-red-50 dark:bg-red-950/40 ring-2 ring-red-300 dark:ring-red-800 shadow-md scale-[1.04] animate-pulse"
+                ? " bg-red-50 dark:bg-red-950/40 ring-2 ring-red-300 dark:ring-red-800"
                 : isBull
-                ? " bg-green-50 dark:bg-green-950/40 ring-2 ring-green-300 dark:ring-green-800 shadow-md scale-[1.04] animate-pulse"
-                : " animate-pulse"
+                ? " bg-green-50 dark:bg-green-950/40 ring-2 ring-green-300 dark:ring-green-800"
+                : ""
               : "";
-
-            const boxClass = `${baseBox} ${hotDecor}`.trim();
-
-            // % sizing & color
-            const pctSize = hot
-              ? "text-base md:text-lg lg:text-xl xl:text-2xl"
-              : "text-sm md:text-base lg:text-lg xl:text-xl";
-            const pctStyleColor = hot
-              ? { color: isBull ? "rgb(34,197,94)" : isBear ? "rgb(239,68,68)" : "rgb(255,255,255)" }
-              : pctColor(val, isBull, isBear);
-
-            // Ultra-thin white outline on ALL text only when hot
-            const hotStrokeStyle = hot
-              ? { WebkitTextStroke: "0.15px rgba(255,255,255,0.85)", textShadow: "0 0 0.1px rgba(255,255,255,0.7)" }
-              : {};
-
-            // Arrow before label
-            const Arrow = () => (
-              <span className="inline-flex items-center text-base md:text-lg lg:text-xl flex-none shrink-0">
-                {isBull && <span className="text-green-500 leading-none">▲</span>}
-                {isBear && <span className="text-red-500 leading-none">▼</span>}
-              </span>
-            );
-
-            // Trend words (bullish/bearish) after EMA (visible from sm+; truncates first)
-            const TrendWord = () => (
-              <span
-                className={`font-bold ${isBull ? "text-green-600" : isBear ? "text-red-600" : "text-black dark:text-white"} truncate hidden sm:inline`}
-                title={trendText}
-              >
-                {trendText}
-              </span>
-            );
+            const valueStyle = pct != null && pct !== "" && !hot ? pctColor(val, isBull, isBear) : undefined;
+            const valueClass = pct != null && pct !== "" && hot
+              ? (isBull ? "text-green-600" : isBear ? "text-red-600" : "text-black dark:text-white")
+              : "text-black dark:text-white";
+            const displayValue = pct != null && pct !== ""
+              ? `${(trendText || "").trim()} ${!Number.isNaN(val) ? val.toFixed(2) : pct}%`
+              : (value || "—");
 
             return (
-              <div className={boxClass} style={hotStrokeStyle}>
-                {/* LEFT: Arrow, then EMA label, then bullish/bearish */}
-                <div className="flex items-center gap-2 sm:gap-3 lg:gap-4 min-w-0 flex-1 overflow-hidden">
-                  <Arrow />
-                  {/* Interval label variants */}
-                  <span className="text-blue-700 dark:text-blue-200 font-bold flex-none shrink-0 hidden lg:block whitespace-nowrap">
-                    {minsLabelFull /* "EMA 1m:" */}
-                  </span>
-                  <span className="text-blue-700 dark:text-blue-200 font-bold flex-none shrink-0 hidden sm:block lg:hidden whitespace-nowrap">
-                    {minsLabelShort /* "1m" */}
-                  </span>
-                  <span className="text-blue-700 dark:text-blue-200 font-bold flex-none shrink-0 block sm:hidden whitespace-nowrap">
-                    {minsLabelTiny /* "1" */}
-                  </span>
-                  <TrendWord />
-                </div>
-
-                {/* RIGHT: Percentage — NEVER shrinks */}
+              <div className={`${baseBox} ${hotDecor}`.trim()}>
+                <span className="text-blue-700 dark:text-blue-200 font-bold text-xs md:text-sm mb-1 truncate">
+                  {header}
+                </span>
                 <span
-                  className={`font-extrabold ${pctSize} text-right leading-none ml-3 flex-none shrink-0`}
-                  style={{
-                    ...pctStyleColor,
-                    minWidth: "76px",
-                    width: "max(76px, 5.5ch)",
-                    whiteSpace: "nowrap",
-                    display: "inline-block",
-                  }}
-                  title={`${!Number.isNaN(val) ? val.toFixed(2) : pct}%`}
+                  className={`font-bold text-sm md:text-base truncate ${valueClass}`}
+                  style={valueStyle}
+                  title={displayValue}
                 >
-                  {!Number.isNaN(val) ? val.toFixed(2) : pct}%
+                  {pct != null && pct !== "" && (isBull || isBear) && (
+                    <span className="mr-1">{isBull ? "▲" : "▼"}</span>
+                  )}
+                  {displayValue}
                 </span>
               </div>
             );
@@ -2159,24 +2135,19 @@ useEffect(() => {
 
           return (
             <>
-              <EmaBox
-                minsLabelFull="EMA 1m:"
-                minsLabelShort="1m"
-                minsLabelTiny="1"
+              <EmaCell header="Last Update Time" value={getTimeAgo(emaTrends.last_updated)} />
+              <EmaCell
+                header="EMA 1m"
                 trendText={emaTrends.overall_ema_trend_1m}
                 pct={emaTrends.overall_ema_trend_percentage_1m}
               />
-              <EmaBox
-                minsLabelFull="EMA 5m:"
-                minsLabelShort="5m"
-                minsLabelTiny="5"
+              <EmaCell
+                header="EMA 5m"
                 trendText={emaTrends.overall_ema_trend_5m}
                 pct={emaTrends.overall_ema_trend_percentage_5m}
               />
-              <EmaBox
-                minsLabelFull="EMA 15m:"
-                minsLabelShort="15m"
-                minsLabelTiny="15"
+              <EmaCell
+                header="EMA 15m"
                 trendText={emaTrends.overall_ema_trend_15m}
                 pct={emaTrends.overall_ema_trend_percentage_15m}
               />

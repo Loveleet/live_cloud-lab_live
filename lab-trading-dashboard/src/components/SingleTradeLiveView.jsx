@@ -222,6 +222,7 @@ const ACTION_LABELS = {
   setStopPrice: "Set stop price",
   addInvestment: "Add investment",
   clear: "Clear",
+  partialClose: "Partial close",
 };
 
 function ConfirmActionModal({
@@ -229,13 +230,14 @@ function ConfirmActionModal({
   onClose,
   actionType,
   requireAmount,
+  amountFirst = false,
   amountLabel = "Amount",
   amountPlaceholder = "0",
   extraLabel,
   extraValue,
   onConfirm,
 }) {
-  const [step, setStep] = useState("password");
+  const [step, setStep] = useState(amountFirst ? "amount" : "password");
   const [password, setPassword] = useState("");
   const [amount, setAmount] = useState("");
   const [error, setError] = useState("");
@@ -249,14 +251,14 @@ function ConfirmActionModal({
   const showSuccess = success;
 
   const reset = useCallback(() => {
-    setStep("password");
+    setStep(amountFirst ? "amount" : "password");
     setPassword("");
     setAmount("");
     setError("");
     setSuccess(false);
     setSuccessMessage("Success!");
     setIsSubmitting(false);
-  }, []);
+  }, [amountFirst]);
 
   useEffect(() => {
     if (open) reset();
@@ -279,8 +281,17 @@ function ConfirmActionModal({
 
   const handlePasswordNext = () => {
     if (!validatePassword()) return;
-    if (requireAmount) setStep("amount");
+    if (requireAmount && !amountFirst) setStep("amount");
     else doConfirm();
+  };
+
+  const handleAmountNext = () => {
+    if (requireAmount && !(amount || "").trim()) {
+      setError(`Enter ${amountLabel.toLowerCase()}`);
+      return;
+    }
+    setError("");
+    setStep("password");
   };
 
   const doConfirm = async () => {
@@ -322,7 +333,7 @@ function ConfirmActionModal({
           <p className="text-green-600 dark:text-green-400 font-medium mb-4">{successMessage}</p>
         )}
         {!showSuccess && showPasswordStep && (
-          <>
+            <>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Password</label>
             <input
               type="password"
@@ -331,7 +342,7 @@ function ConfirmActionModal({
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault();
-                  handlePasswordNext();
+                  amountFirst ? doConfirm() : handlePasswordNext();
                 }
               }}
               placeholder="Password"
@@ -345,6 +356,9 @@ function ConfirmActionModal({
         )}
         {!showSuccess && showAmountStep && (
           <>
+            {extraLabel && extraValue != null && (
+              <p className="text-sm text-gray-500 dark:text-white/90 mb-2">{extraLabel}: {extraValue}</p>
+            )}
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{amountLabel}</label>
             <input
               type="text"
@@ -354,7 +368,7 @@ function ConfirmActionModal({
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault();
-                  handleAmountConfirm();
+                  amountFirst ? handleAmountNext() : handleAmountConfirm();
                 }
               }}
               placeholder={amountPlaceholder}
@@ -370,17 +384,26 @@ function ConfirmActionModal({
               Cancel
             </button>
             {showPasswordStep && (
-              <button type="button" onClick={handlePasswordNext} disabled={isSubmitting} className="px-4 py-1.5 rounded-lg bg-teal-600 text-white disabled:opacity-50 disabled:cursor-not-allowed">
-                {isSubmitting ? "…" : (requireAmount ? "Next" : "Confirm")}
-              </button>
+              <>
+                {amountFirst && (
+                  <button type="button" onClick={() => setStep("amount")} disabled={isSubmitting} className="px-3 py-1.5 rounded-lg bg-gray-200 dark:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                    Back
+                  </button>
+                )}
+                <button type="button" onClick={amountFirst ? () => { doConfirm(); } : handlePasswordNext} disabled={isSubmitting} className="px-4 py-1.5 rounded-lg bg-teal-600 text-white disabled:opacity-50 disabled:cursor-not-allowed">
+                  {isSubmitting ? "…" : (requireAmount && !amountFirst ? "Next" : "Confirm")}
+                </button>
+              </>
             )}
             {showAmountStep && (
               <>
-                <button type="button" onClick={() => setStep("password")} disabled={isSubmitting} className="px-3 py-1.5 rounded-lg bg-gray-200 dark:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed">
-                  Back
-                </button>
-                <button type="button" onClick={handleAmountConfirm} disabled={isSubmitting} className="px-4 py-1.5 rounded-lg bg-teal-600 text-white disabled:opacity-50 disabled:cursor-not-allowed">
-                  {isSubmitting ? "…" : "Confirm"}
+                {!amountFirst && (
+                  <button type="button" onClick={() => setStep("password")} disabled={isSubmitting} className="px-3 py-1.5 rounded-lg bg-gray-200 dark:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                    Back
+                  </button>
+                )}
+                <button type="button" onClick={amountFirst ? handleAmountNext : handleAmountConfirm} disabled={isSubmitting} className="px-4 py-1.5 rounded-lg bg-teal-600 text-white disabled:opacity-50 disabled:cursor-not-allowed">
+                  {isSubmitting ? "…" : (amountFirst ? "Next" : "Confirm")}
                 </button>
               </>
             )}
@@ -2907,6 +2930,7 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
     (typeof rawTrade.exist_in_exchange === "string" && parseFloat(rawTrade.exist_in_exchange) > 0)
   );
   const [exchangePositionData, setExchangePositionData] = useState(null);
+  const [futuresBalance, setFuturesBalance] = useState(null); // number = USDT available, null = loading/error
   const [binanceDataRefreshKey, setBinanceDataRefreshKey] = useState(0);
 
   // --- Binance Data table settings: column order + visibility (+ actions column) ---
@@ -2974,6 +2998,26 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
     return () => clearInterval(id);
   }, [isExistInExchange, signalSymbol, binanceDataRefreshKey]);
 
+  useEffect(() => {
+    if (!isExistInExchange) {
+      setFuturesBalance(null);
+      return;
+    }
+    const fetchFuturesBalance = async () => {
+      try {
+        const res = await apiFetch(api("/api/futures-balance"));
+        const data = await res.json().catch(() => ({}));
+        if (data?.ok && typeof data?.availableBalance === "number") setFuturesBalance(data.availableBalance);
+        else setFuturesBalance(null);
+      } catch {
+        setFuturesBalance(null);
+      }
+    };
+    fetchFuturesBalance();
+    const id = setInterval(fetchFuturesBalance, EXCHANGE_POLL_MS);
+    return () => clearInterval(id);
+  }, [isExistInExchange, binanceDataRefreshKey]);
+
   const [fieldOrder, setFieldOrder] = useState(() => {
     try {
       const v = localStorage.getItem(INFO_FIELD_ORDER_KEY);
@@ -3036,6 +3080,7 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
   const executeRowRef = useRef(null);
   const hedgeRowRef = useRef(null);
   const clearOrderSymbolRef = useRef(null);
+  const partialClosePositionRef = useRef(null); // { symbol, positionSide, positionAmt } when opening partial-close modal
 
   const [infoGridHeight, setInfoGridHeight] = useSectionSize(INFO_GRID_HEIGHT_KEY, SIZE_CONFIG.infoGrid);
   const [infoLeftHeight, setInfoLeftHeight] = useSectionSize(INFO_LEFT_HEIGHT_KEY, SIZE_CONFIG.infoLeft);
@@ -3332,12 +3377,13 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
     const position_side = (rowData?.positionSide || "BOTH").toString().trim().toUpperCase();
     const amt = rowData?.positionAmt != null ? parseFloat(rowData.positionAmt) : NaN;
     const quantity = !Number.isNaN(amt) && amt !== 0 ? Math.abs(amt) : undefined;
+    const uid = rawTrade?.unique_id != null ? String(rawTrade.unique_id) : (row.Unique_ID != null ? String(stripHtml(row.Unique_ID)).trim() : null);
     const url = api("/api/end-trade");
     const res = await apiFetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        unique_id: rawTrade?.unique_id,
+        unique_id: uid || undefined,
         symbol: sym,
         position_side: ["LONG", "SHORT", "BOTH"].includes(position_side) ? position_side : "BOTH",
         quantity: quantity != null && quantity > 0 ? quantity : undefined,
@@ -3435,6 +3481,28 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
     return { successMessage: data.message || "The operation of cancel all open order is done." };
   }, [signalSymbol, rawTrade?.pair, row.Pair]);
 
+  const handlePartialClose = useCallback(async ({ password, amount }) => {
+    const posRef = partialClosePositionRef.current;
+    const sym = (posRef?.symbol || signalSymbol || (rawTrade?.pair || stripHtml(row.Pair) || "").replace("/", "").trim()).toString().toUpperCase();
+    const positionSide = (posRef?.positionSide || "LONG").toString().toUpperCase();
+    const qtyStr = (amount ?? "").toString().trim();
+    if (!sym) throw new Error("Symbol not found");
+    if (!qtyStr) throw new Error("Quantity to close required");
+    const qty = parseFloat(qtyStr);
+    if (!Number.isFinite(qty) || qty <= 0) throw new Error("Quantity must be a positive number");
+    const res = await apiFetch(api("/api/partial-close"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ symbol: sym, quantity: qty, position_side: positionSide, password: (password || "").trim() }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.message || data.error || "Partial close failed");
+    if (data?.ok === false) throw new Error(data.message || "Partial close failed");
+    partialClosePositionRef.current = null;
+    setBinanceDataRefreshKey((k) => k + 1);
+    return { successMessage: data.message || `Closed ${qty} ${positionSide} successfully.` };
+  }, [signalSymbol, rawTrade?.pair, row.Pair]);
+
   const isAutoEnabled = rawTrade?.auto === true || rawTrade?.auto === "true" || rawTrade?.auto === 1;
   const handleAutoPilot = useCallback(async ({ password, extraValue }) => {
     const unique_id = rawTrade?.unique_id;
@@ -3480,9 +3548,10 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
       case "setStopPrice": return handleSetStopPrice;
       case "addInvestment": return handleAddInvestment;
       case "clear": return handleClear;
+      case "partialClose": return handlePartialClose;
       default: return async () => {};
     }
-  }, [handleExecute, handleEndTrade, handleAutoPilot, handleHedge, handleSetStopPrice, handleAddInvestment, handleClear]);
+  }, [handleExecute, handleEndTrade, handleAutoPilot, handleHedge, handleSetStopPrice, handleAddInvestment, handleClear, handlePartialClose]);
 
   return (
     <div className="fixed inset-0 flex flex-col bg-[#f5f6fa] dark:bg-[#0f0f0f] text-[#222] dark:text-white overflow-hidden w-full">
@@ -3495,6 +3564,9 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
           ← Back
         </button>
         <span className="font-semibold text-base sm:text-lg truncate min-w-0">Live Trade — {stripHtml(row.Pair) || "N/A"}</span>
+        <span className="font-semibold text-base sm:text-lg truncate min-w-0 text-green-500">
+          Exchange Future Balance — {typeof futuresBalance === "number" ? `${Number(futuresBalance).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDT` : "—"}
+        </span>
         <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
           <UserEmailDisplay />
           <LogoutButton className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-semibold shrink-0" />
@@ -4056,6 +4128,23 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
                                         >
                                           Clear Order
                                         </button>
+
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const sym = (pos.symbol || signalSymbol || "").toString().trim().toUpperCase();
+                                            partialClosePositionRef.current = {
+                                              symbol: sym,
+                                              positionSide: (pos.positionSide || "LONG").toString().toUpperCase(),
+                                              positionAmt: pos.positionAmt,
+                                            };
+                                            setActionModal({ open: true, type: "partialClose", position: pos });
+                                          }}
+                                          className="px-2 py-0.5 rounded bg-red-600 hover:bg-slate-700 text-white font-semibold"
+                                          title="Partially close this position — enter quantity to close (e.g. 900 of 1000)"
+                                        >
+                                          Partial Close
+                                        </button>
                                       </div>
                                     </td>
                                   );
@@ -4491,14 +4580,16 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
           if (actionModal.type === "execute") executeRowRef.current = null;
           if (actionModal.type === "hedge") hedgeRowRef.current = null;
           if (actionModal.type === "clear") clearOrderSymbolRef.current = null;
+          if (actionModal.type === "partialClose") partialClosePositionRef.current = null;
           setActionModal({ open: false, type: null });
         }}
         actionType={actionModal.type}
-        requireAmount={false}
-        amountLabel={actionModal.type === "execute" ? "Amount" : "Investment amount"}
-        amountPlaceholder={actionModal.type === "execute" ? "0" : "0"}
-        extraLabel={actionModal.type === "setStopPrice" ? "Stop price" : actionModal.type === "autoPilot" ? "Action" : actionModal.type === "endTrade" ? "Position side" : actionModal.type === "hedge" ? "Hedge" : undefined}
-        extraValue={actionModal.type === "setStopPrice" ? (actionModal.stopPrice ?? stopPrice) : actionModal.type === "autoPilot" ? (actionModal.autoEnable ? "enable" : "disable") : actionModal.type === "endTrade" ? (actionModal.positionSide || "BOTH") : actionModal.type === "hedge" ? actionModal.hedgeSummary : undefined}
+        requireAmount={actionModal.type === "partialClose"}
+        amountFirst={actionModal.type === "partialClose"}
+        amountLabel={actionModal.type === "execute" ? "Amount" : actionModal.type === "partialClose" ? "Quantity to close" : "Investment amount"}
+        amountPlaceholder={actionModal.type === "execute" ? "0" : actionModal.type === "partialClose" && actionModal.position ? String(Math.abs(parseFloat(actionModal.position.positionAmt) || 0)) : "0"}
+        extraLabel={actionModal.type === "setStopPrice" ? "Stop price" : actionModal.type === "autoPilot" ? "Action" : actionModal.type === "endTrade" ? "Position side" : actionModal.type === "hedge" ? "Hedge" : actionModal.type === "partialClose" ? "Position" : undefined}
+        extraValue={actionModal.type === "setStopPrice" ? (actionModal.stopPrice ?? stopPrice) : actionModal.type === "autoPilot" ? (actionModal.autoEnable ? "enable" : "disable") : actionModal.type === "endTrade" ? (actionModal.positionSide || "BOTH") : actionModal.type === "hedge" ? actionModal.hedgeSummary : actionModal.type === "partialClose" && actionModal.position ? `${(actionModal.position.positionSide || "LONG").toString().toUpperCase()} • max ${Math.abs(parseFloat(actionModal.position.positionAmt) || 0)}` : undefined}
         onConfirm={actionModal.type ? getConfirmHandler(actionModal.type) : undefined}
       />
     </div>
