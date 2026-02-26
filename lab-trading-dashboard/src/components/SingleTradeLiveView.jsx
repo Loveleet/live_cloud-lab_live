@@ -2932,6 +2932,7 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
   const [exchangePositionData, setExchangePositionData] = useState(null);
   const [futuresBalance, setFuturesBalance] = useState(null); // number = USDT available, null = loading/error
   const [binanceDataRefreshKey, setBinanceDataRefreshKey] = useState(0);
+  const [emaTrends, setEmaTrends] = useState(null);
 
   // --- Binance Data table settings: column order + visibility (+ actions column) ---
   const [binanceColumns, setBinanceColumns] = useState(() => {
@@ -3017,6 +3018,22 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
     const id = setInterval(fetchFuturesBalance, EXCHANGE_POLL_MS);
     return () => clearInterval(id);
   }, [isExistInExchange, binanceDataRefreshKey]);
+
+  // EMA trends (same as App.jsx: Last Update Time, EMA 1m, 5m, 15m)
+  useEffect(() => {
+    const fetchEmaTrends = async () => {
+      try {
+        const res = await apiFetch(api(`/api/pairstatus?_=${Date.now()}`));
+        const data = res.ok ? await res.json().catch(() => null) : null;
+        setEmaTrends(data);
+      } catch {
+        setEmaTrends(null);
+      }
+    };
+    fetchEmaTrends();
+    const id = setInterval(fetchEmaTrends, 60 * 1000);
+    return () => clearInterval(id);
+  }, []);
 
   const [fieldOrder, setFieldOrder] = useState(() => {
     try {
@@ -3583,6 +3600,103 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
       </div>
 
       <div className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-4 space-y-3 sm:space-y-4 min-h-0">
+        {/* EMA Grid — same as App.jsx: Last Update Time, EMA 1m, 5m, 15m */}
+        {emaTrends && (() => {
+          const getTimeAgo = (lastUpdated) => {
+            try {
+              if (lastUpdated == null || lastUpdated === "") return "—";
+              let utcStr = String(lastUpdated).trim();
+              if (!utcStr) return "—";
+              if (!/Z$|[+-]\d{2}:?\d{2}$/.test(utcStr)) utcStr = utcStr.replace(" ", "T") + "Z";
+              const t = new Date(utcStr).getTime();
+              if (Number.isNaN(t)) return "—";
+              const diffMs = Date.now() - t;
+              const diffSec = Math.floor(diffMs / 1000);
+              const diffMin = Math.floor(diffSec / 60);
+              const diffHours = Math.floor(diffMin / 60);
+              if (diffSec < 60) return `${diffSec} sec ago`;
+              if (diffMin < 60) return `${diffMin} min ago`;
+              if (diffHours < 24) return `${diffHours} hr ago`;
+              return `${Math.floor(diffHours / 24)} days ago`;
+            } catch {
+              return "—";
+            }
+          };
+          const pctColor = (valNum, isBull, isBear) => {
+            const v = Number(valNum);
+            if (Number.isNaN(v)) return { color: "rgb(255,255,255)" };
+            const tRaw = Math.max(0, Math.min(v / 90, 1));
+            const t = Math.pow(tRaw, 0.6);
+            const target = isBull ? [34, 197, 94] : isBear ? [239, 68, 68] : [255, 255, 255];
+            const r = Math.round(255 + (target[0] - 255) * t);
+            const g = Math.round(255 + (target[1] - 255) * t);
+            const b = Math.round(255 + (target[2] - 255) * t);
+            return { color: `rgb(${r}, ${g}, ${b})` };
+          };
+          const EmaCell = ({ header, value, trendText, pct }) => {
+            const val = Number(pct);
+            const trend = (trendText || "").toLowerCase();
+            const isBull = trend.includes("bull");
+            const isBear = trend.includes("bear");
+            const hot = pct != null && pct !== "" && !Number.isNaN(val) && val >= 90;
+            const baseBox =
+              "w-full min-w-0 flex flex-col rounded-lg border transition-all duration-200 ease-out " +
+              "bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-900 " +
+              "px-3 py-2 md:px-4 md:py-2.5";
+            const hotDecor = hot
+              ? isBear
+                ? " bg-red-50 dark:bg-red-950/40 ring-2 ring-red-300 dark:ring-red-800"
+                : isBull
+                  ? " bg-green-50 dark:bg-green-950/40 ring-2 ring-green-300 dark:ring-green-800"
+                  : ""
+              : "";
+            const valueStyle = pct != null && pct !== "" && !hot ? pctColor(val, isBull, isBear) : undefined;
+            const valueClass = pct != null && pct !== "" && hot
+              ? (isBull ? "text-green-600" : isBear ? "text-red-600" : "text-black dark:text-white")
+              : "text-black dark:text-white";
+            const displayValue = pct != null && pct !== ""
+              ? `${(trendText || "").trim()} ${!Number.isNaN(val) ? val.toFixed(2) : pct}%`
+              : (typeof value !== "undefined" && value !== null && String(value).trim() !== "" ? String(value).trim() : "—");
+            return (
+              <div key={header} className={`${baseBox} ${hotDecor}`.trim()}>
+                <span className="text-blue-700 dark:text-blue-200 font-bold text-xs md:text-sm mb-1 truncate">
+                  {header}
+                </span>
+                <span
+                  className={`font-bold text-sm md:text-base truncate ${valueClass}`}
+                  style={valueStyle}
+                  title={displayValue}
+                >
+                  {pct != null && pct !== "" && (isBull || isBear) && (
+                    <span className="mr-1">{isBull ? "▲" : "▼"}</span>
+                  )}
+                  {displayValue}
+                </span>
+              </div>
+            );
+          };
+          const lastUpdatedDisplay = getTimeAgo(emaTrends.last_updated);
+          return (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 flex-1 min-w-[280px] mb-3 sm:mb-4">
+              <EmaCell header="Last Update Time" value={lastUpdatedDisplay ?? "—"} />
+              <EmaCell
+                header="EMA 1m"
+                trendText={emaTrends.overall_ema_trend_1m}
+                pct={emaTrends.overall_ema_trend_percentage_1m}
+              />
+              <EmaCell
+                header="EMA 5m"
+                trendText={emaTrends.overall_ema_trend_5m}
+                pct={emaTrends.overall_ema_trend_percentage_5m}
+              />
+              <EmaCell
+                header="EMA 15m"
+                trendText={emaTrends.overall_ema_trend_15m}
+                pct={emaTrends.overall_ema_trend_percentage_15m}
+              />
+            </div>
+          );
+        })()}
         {sectionOrder.map((id) => {
           if (id === "information") return (
         <section key="information" className="rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-[#181a20] overflow-hidden shadow-lg flex-shrink-0 flex flex-col" style={{ minHeight: 200 }}>

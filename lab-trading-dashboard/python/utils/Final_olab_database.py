@@ -1,4 +1,5 @@
 import os
+from urllib.parse import quote_plus
 import threading
 import traceback
 import numpy as np
@@ -175,9 +176,9 @@ API_KEYS = [
 #connection_string_postgresql = "postgresql://lab:IndiaNepal1-@192.168.18.14:5432/olab"
 
 #UTHO server
-connection_string_postgresql = "postgresql://lab:IndiaNepal1-@150.241.244.130:5432/olab"
+#connection_string_postgresql = "postgresql://lab:IndiaNepal1-@150.241.244.130:5432/olab"
 
-# connection_string_postgresql = "postgresql://lab:IndiaNepal1-@127.0.0.1:5432/olab"
+connection_string_postgresql = "postgresql://lab:IndiaNepal1-@127.0.0.1:5432/olab"
 
 def olab_create_new_engine():
     return create_engine(
