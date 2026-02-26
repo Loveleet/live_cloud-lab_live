@@ -2999,11 +2999,8 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
     return () => clearInterval(id);
   }, [isExistInExchange, signalSymbol, binanceDataRefreshKey]);
 
+  // Fetch futures balance always (show regardless of whether this trade is on exchange)
   useEffect(() => {
-    if (!isExistInExchange) {
-      setFuturesBalance(null);
-      return;
-    }
     const fetchFuturesBalance = async () => {
       try {
         const res = await apiFetch(api("/api/futures-balance"));
@@ -3017,7 +3014,7 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
     fetchFuturesBalance();
     const id = setInterval(fetchFuturesBalance, EXCHANGE_POLL_MS);
     return () => clearInterval(id);
-  }, [isExistInExchange, binanceDataRefreshKey]);
+  }, [binanceDataRefreshKey]);
 
   // EMA trends (same as App.jsx: Last Update Time, EMA 1m, 5m, 15m)
   useEffect(() => {
