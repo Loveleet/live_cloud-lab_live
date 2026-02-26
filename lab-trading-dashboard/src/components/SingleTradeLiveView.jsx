@@ -2930,6 +2930,7 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
     (typeof rawTrade.exist_in_exchange === "string" && parseFloat(rawTrade.exist_in_exchange) > 0)
   );
   const [exchangePositionData, setExchangePositionData] = useState(null);
+  const [openOrdersData, setOpenOrdersData] = useState(null); // { orders: [{ symbol, positionSide, type, stopPrice }] }
   const [futuresBalance, setFuturesBalance] = useState(null); // number = USDT available, null = loading/error
   const [binanceDataRefreshKey, setBinanceDataRefreshKey] = useState(0);
   const [emaTrends, setEmaTrends] = useState(null);
@@ -2960,17 +2961,18 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
   useEffect(() => {
     if (exchangePositionData?.positions?.length) {
       const keys = Object.keys(exchangePositionData.positions[0]);
+      const allKeys = ["__actions__", "stopPrice", ...keys];
       setBinanceColumns((prev) => {
         if (Array.isArray(prev) && prev.length > 0) {
-          const ordered = prev.filter((c) => c === "__actions__" || keys.includes(c));
-          const added = keys.filter((k) => !ordered.includes(k));
-          return ["__actions__", ...ordered.filter((x) => x !== "__actions__"), ...added];
+          const ordered = prev.filter((c) => c === "__actions__" || c === "stopPrice" || keys.includes(c));
+          const added = allKeys.filter((k) => !ordered.includes(k));
+          return ["__actions__", "stopPrice", ...ordered.filter((x) => x !== "__actions__" && x !== "stopPrice"), ...added];
         }
-        return ["__actions__", ...keys];
+        return ["__actions__", "stopPrice", ...keys];
       });
       setBinanceColumnVisibility((prev) => {
         const next = { ...prev };
-        ["__actions__", ...keys].forEach((k) => {
+        allKeys.forEach((k) => {
           if (next[k] === undefined) next[k] = true;
         });
         return next;
@@ -2996,6 +2998,26 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
     };
     fetchOpenPosition();
     const id = setInterval(fetchOpenPosition, EXCHANGE_POLL_MS);
+    return () => clearInterval(id);
+  }, [isExistInExchange, signalSymbol, binanceDataRefreshKey]);
+
+  // Open orders (for stop price per position from main_binance um_get_open_orders)
+  useEffect(() => {
+    if (!isExistInExchange || !signalSymbol) {
+      setOpenOrdersData(null);
+      return;
+    }
+    const fetchOpenOrders = async () => {
+      try {
+        const res = await apiFetch(api(`/api/open-orders?symbol=${encodeURIComponent(signalSymbol)}`));
+        const data = await res.json().catch(() => ({}));
+        setOpenOrdersData(data?.ok ? data : { orders: [] });
+      } catch {
+        setOpenOrdersData({ orders: [] });
+      }
+    };
+    fetchOpenOrders();
+    const id = setInterval(fetchOpenOrders, EXCHANGE_POLL_MS);
     return () => clearInterval(id);
   }, [isExistInExchange, signalSymbol, binanceDataRefreshKey]);
 
@@ -3145,14 +3167,27 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
   // Binance table: text zoom vs button zoom (separate adjusters)
   const hasBinancePositions = !!exchangePositionData?.positions?.length;
   const binanceDefaultColumns = hasBinancePositions
-    ? ["__actions__", ...Object.keys(exchangePositionData.positions[0])]
+    ? ["__actions__", "stopPrice", ...Object.keys(exchangePositionData.positions[0])]
     : [];
+  // Map (symbol_positionSide) -> stopPrice from open orders (show 0 if no stop)
+  const openOrdersStopPriceMap = useMemo(() => {
+    const map = new Map();
+    const orders = openOrdersData?.orders || [];
+    for (const o of orders) {
+      const sym = (o.symbol || "").toString().toUpperCase();
+      const ps = (o.positionSide || "BOTH").toString().toUpperCase();
+      const key = `${sym}_${ps}`;
+      const sp = o.stopPrice != null && o.stopPrice !== "" ? parseFloat(o.stopPrice) : 0;
+      if (!map.has(key) || (Number.isFinite(sp) && sp > 0)) map.set(key, Number.isFinite(sp) ? sp : 0);
+    }
+    return map;
+  }, [openOrdersData]);
   const binanceEffectiveColumns = (binanceColumns.length ? binanceColumns : binanceDefaultColumns);
   const binanceVisibleKeys = binanceEffectiveColumns.filter(
     (key) => binanceColumnVisibility[key] !== false
   );
   const binanceVisibleLabels = binanceVisibleKeys.map((key) =>
-    key === "__actions__" ? "Actions" : key.replace(/([A-Z])/g, " $1").trim()
+    key === "__actions__" ? "Actions" : key === "stopPrice" ? "Stop Price" : key.replace(/([A-Z])/g, " $1").trim()
   );
   const binanceFontSizePx = (zoomBackLeft / 100) * 14;
   const binanceButtonFontSizePx = Math.max(8, Math.round((zoomBinanceButtons / 100) * 10));
@@ -4262,13 +4297,20 @@ export default function SingleTradeLiveView({ formattedRow: initialFormattedRow,
                                 }
                                 const pl = parseFloat(pos.unRealizedProfit || 0);
                                 const plClass = key === "unRealizedProfit" ? (pl < 0 ? "text-red-600 font-medium" : "text-green-600 font-medium") : "";
+                                const isStopPriceCol = key === "stopPrice";
+                                const cellVal = isStopPriceCol
+                                  ? (openOrdersStopPriceMap.get(`${(pos.symbol || "").toString().toUpperCase()}_${(pos.positionSide || "BOTH").toString().toUpperCase()}`) ?? 0)
+                                  : pos[key];
+                                const displayVal = isStopPriceCol
+                                  ? (typeof cellVal === "number" && Number.isFinite(cellVal) ? Number(cellVal).toFixed(4) : "0")
+                                  : formatVal(key, cellVal);
                                 return (
                                   <td
                                     key={key}
                                     className={`border border-gray-200 dark:border-gray-700 px-2 py-1 ${plClass}`}
                                     style={{ fontSize: `${binanceFontSizePx}px` }}
                                   >
-                                    {formatVal(key, pos[key])}
+                                    {displayVal}
                                   </td>
                                 );
                               })}

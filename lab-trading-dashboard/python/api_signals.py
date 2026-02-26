@@ -80,7 +80,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'utils'))
 try:
     from utils.main_binance import getAllOpenPosition, getOpenPosition, closeOrder, \
      partial_close_position, close_hedge_position, setHedgeStopLoss, HedgeModePlaceOrder, \
-    getQuantity, NewOrderPlace, place_hedge_opposite, get_avail_balance, add_investment as main_binance_add_investment, client
+    getQuantity, NewOrderPlace, place_hedge_opposite, get_avail_balance, add_investment as main_binance_add_investment, client, um_get_open_orders
     from utils.Final_olab_database import olab_sync_exchange_trades
 except ImportError as e:
     _log(f"Could not import main_binance or Final_olab_database: {e}", "WARN")
@@ -98,6 +98,7 @@ except ImportError as e:
     main_binance_add_investment = None
     client = None
     olab_sync_exchange_trades = None
+    um_get_open_orders = None
 
 app = Flask(__name__)
 
@@ -290,6 +291,43 @@ def open_position():
         import traceback
         traceback.print_exc()
         return jsonify({"ok": False, "message": error_msg}), 500
+
+
+@app.route("/api/open-orders", methods=["GET", "OPTIONS"])
+def open_orders():
+    """Return open orders for a symbol from Binance via um_get_open_orders(symbol). Includes stopPrice (0 if not set)."""
+    if request.method == "OPTIONS":
+        return "", 204
+    if um_get_open_orders is None:
+        return jsonify({"ok": False, "message": "um_get_open_orders not available", "orders": []}), 500
+    symbol = (request.args.get("symbol") or "").strip().upper()
+    if not symbol:
+        return jsonify({"ok": False, "message": "symbol query param required", "orders": []}), 400
+    try:
+        result = um_get_open_orders(symbol=symbol)
+        if isinstance(result, dict) and result.get("ok") is False:
+            return jsonify({"ok": False, "message": result.get("message", "failed"), "orders": []}), 500
+        raw_orders = result if isinstance(result, list) else []
+        orders = []
+        for o in raw_orders:
+            try:
+                stop_price = o.get("stopPrice")
+                if stop_price is None or stop_price == "":
+                    stop_price = 0
+                else:
+                    stop_price = float(stop_price)
+            except (TypeError, ValueError):
+                stop_price = 0
+            orders.append({
+                "symbol": o.get("symbol", symbol),
+                "positionSide": o.get("positionSide", "BOTH"),
+                "type": o.get("type", ""),
+                "stopPrice": stop_price,
+            })
+        return jsonify({"ok": True, "symbol": symbol, "orders": orders})
+    except Exception as e:
+        _log(f"open-orders | Error: {str(e)}", "ERROR")
+        return jsonify({"ok": False, "message": str(e), "orders": []}), 500
 
 
 @app.route("/api/execute", methods=["POST", "OPTIONS"])
