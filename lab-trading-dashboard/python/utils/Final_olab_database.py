@@ -173,13 +173,26 @@ API_KEYS = [
 
 # PostgreSQL Connection String - Update these values for your PostgreSQL server
 # Format: postgresql://username:password@host:port/database
-# If running on Ubuntu/Linux (cloud), use localhost; otherwise use LAN IP.
-if platform.system().lower() == "linux":
-    # Ubuntu / cloud server: PostgreSQL on same machine
-    connection_string_postgresql = "postgresql://lab:IndiaNepal1-@127.0.0.1:5432/olab"
-else:
-    # Windows / other: connect to LAN database server
-    connection_string_postgresql = "postgresql://lab:IndiaNepal1-@192.168.18.14:5432/olab"
+# Behavior:
+#   - On Ubuntu/Linux: use localhost (127.0.0.1)
+#   - On others (e.g. Windows): default host 150.241.244.130, but can override with DB_HOST
+_db_host = os.environ.get("DB_HOST")
+_db_port = os.environ.get("DB_PORT", "5432")
+_db_user = os.environ.get("DB_USER", "lab")
+_db_password = os.environ.get("DB_PASSWORD", "IndiaNepal1-")
+_db_name = os.environ.get("DB_NAME", "olab")
+
+system_is_linux = platform.system().lower() == "linux"
+
+if not _db_host:
+    if system_is_linux:
+        _db_host = "127.0.0.1"
+    else:
+        _db_host = "150.241.244.130"
+
+connection_string_postgresql = (
+    f"postgresql://{_db_user}:{_db_password}@{_db_host}:{_db_port}/{_db_name}"
+)
 
 def olab_create_new_engine():
     return create_engine(

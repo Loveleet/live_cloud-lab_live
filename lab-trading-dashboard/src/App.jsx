@@ -1815,7 +1815,7 @@ useEffect(() => {
               {/* SVG Graph Background (animated) */}
               <AnimatedGraphBackground width={400} height={48} opacity={0.4} />
               {/* LAB left, Auto Execute center with inline text */}
-              <div className="relative z-10 flex items-left w-full px-6">
+              <div className="relative z-10 flex items-left w-full px-72">
                 {/* Left: LAB brand */}
                 <div className="flex items-center flex-1">
                   <h1
@@ -1874,8 +1874,8 @@ useEffect(() => {
                       </span>
                     </button>
                     <span
-                      className={`text-[14px] md:text-xs text-left whitespace-nowrap ${
-                        autoExecuteActive ? "text-emerald-100" : "text-red-100"
+                      className={`text-[24px] md:text-lg bg-white px-6 rounded-full font-bold text-left whitespace-nowrap ${
+                        autoExecuteActive ? "text-green-800" : "text-red-500"
                       }`}
                     >
                       {autoExecuteActive
