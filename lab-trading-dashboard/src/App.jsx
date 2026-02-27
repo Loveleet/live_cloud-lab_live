@@ -144,6 +144,7 @@ const App = () => {
   const [emaTrends, setEmaTrends] = useState(null);
   const [timeAgoTick, setTimeAgoTick] = useState(0); // tick every 1 min to refresh "X min ago" for last_updated
   const [activeLossFlags, setActiveLossFlags] = useState(null);
+  const [autoExecuteActive, setAutoExecuteActive] = useState(null);
   // Expose superTrendData for focused debugging (must be at top level, not inside render logic)
   useEffect(() => {
     window._superTrendData = superTrendData;
@@ -502,6 +503,20 @@ const [selectedIntervals, setSelectedIntervals] = useState(() => {
         setActiveLossFlags(flagsJson || null);
       } catch {
         setActiveLossFlags(null);
+      }
+
+      // Fetch Auto Execute (LiveAutoActive) status
+      try {
+        console.log("[API DEBUG] fetch /api/auto-execute");
+        const autoRes = await apiFetch("/api/auto-execute");
+        const autoJson = autoRes.ok ? await autoRes.json() : null;
+        if (autoJson && typeof autoJson.active === "boolean") {
+          setAutoExecuteActive(autoJson.active);
+        } else {
+          setAutoExecuteActive(null);
+        }
+      } catch {
+        setAutoExecuteActive(null);
       }
 
       // Build unified machine list (machines endpoint + trades machine ids)
@@ -1797,8 +1812,51 @@ useEffect(() => {
                   initialAutoOn={true}
                 />
               </div>
-              {/* Right side: empty (Sound, Theme, Logout are in the global bar above) */}
-              <div className="absolute right-4 top-3 z-20" />
+              {/* Right side: Auto Execute status (Sound, Theme, Logout are in the global bar above) */}
+              <div className="absolute right-4 top-3 z-20">
+                {autoExecuteActive !== null && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        const res = await apiFetch("/api/auto-execute/toggle", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({}),
+                        });
+                        const data = await res.json().catch(() => ({}));
+                        if (res.ok && typeof data.active === "boolean") {
+                          setAutoExecuteActive(data.active);
+                        }
+                      } catch {
+                        // ignore toggle errors for now
+                      }
+                    }}
+                    className={`relative inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold border ${
+                      autoExecuteActive
+                        ? "border-emerald-500 bg-emerald-900/40 text-emerald-200"
+                        : "border-red-500 bg-red-900/40 text-red-200"
+                    }`}
+                  >
+                    <span className="relative flex h-2.5 w-2.5">
+                      <span
+                        className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
+                          autoExecuteActive ? "bg-emerald-400" : "bg-red-400"
+                        }`}
+                      />
+                      <span
+                        className={`relative inline-flex rounded-full h-2.5 w-2.5 ${
+                          autoExecuteActive ? "bg-emerald-500" : "bg-red-500"
+                        }`}
+                      />
+                    </span>
+                    <span>
+                      Auto Execute{" "}
+                      {autoExecuteActive ? "Active" : "Deactive"}
+                    </span>
+                  </button>
+                )}
+              </div>
               {/* SVG Graph Background (animated) */}
               <AnimatedGraphBackground width={400} height={48} opacity={0.4} />
               {/* LAB text */}
