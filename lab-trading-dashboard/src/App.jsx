@@ -1814,20 +1814,25 @@ useEffect(() => {
               </div>
               {/* SVG Graph Background (animated) */}
               <AnimatedGraphBackground width={400} height={48} opacity={0.4} />
-              {/* LAB text */}
-              <div className="flex flex-col items-center gap-3">
-                <h1
-                  className="relative z-10 text-5xl font-extrabold text-center bg-gradient-to-r from-blue-500 via-pink-500 to-yellow-400 bg-clip-text text-transparent drop-shadow-lg tracking-tight animate-pulse"
-                  style={{
-                    WebkitTextStroke: '1px #222',
-                    textShadow: '0 4px 24px rgba(0,0,0,0.18)',
-                  }}
-                >
-                  LAB
-                  <span className="block w-16 h-1 mx-auto mt-2 rounded-full bg-gradient-to-r from-blue-400 via-pink-400 to-yellow-300 animate-gradient-x"></span>
-                </h1>
+              {/* LAB left, Auto Execute center with inline text */}
+              <div className="relative z-10 flex items-center w-full max-w-6xl mx-auto">
+                {/* Left: LAB brand */}
+                <div className="flex items-center flex-1">
+                  <h1
+                    className="text-4xl md:text-5xl font-extrabold bg-gradient-to-r from-blue-500 via-pink-500 to-yellow-400 bg-clip-text text-transparent drop-shadow-lg tracking-tight animate-pulse"
+                    style={{
+                      WebkitTextStroke: '1px #222',
+                      textShadow: '0 4px 24px rgba(0,0,0,0.18)',
+                    }}
+                  >
+                    LAB
+                    <span className="block w-16 h-1 mt-2 rounded-full bg-gradient-to-r from-blue-400 via-pink-400 to-yellow-300 animate-gradient-x"></span>
+                  </h1>
+                </div>
+
+                {/* Center: Auto Execute button + inline text */}
                 {autoExecuteActive !== null && (
-                  <div className="flex flex-col items-center gap-1 mt-1">
+                  <div className="flex-1 flex items-center justify-center">
                     <button
                       type="button"
                       onClick={async () => {
@@ -1845,7 +1850,7 @@ useEffect(() => {
                           // ignore toggle errors for now
                         }
                       }}
-                      className={`relative inline-flex items-center gap-2 px-5 py-2 rounded-full text-sm font-semibold border shadow-md ${
+                      className={`relative inline-flex items-center gap-2 px-5 py-2 rounded-full text-sm font-semibold border shadow-md mr-3 ${
                         autoExecuteActive
                           ? "border-emerald-400 bg-emerald-900/60 text-emerald-100"
                           : "border-red-400 bg-red-900/60 text-red-100"
@@ -1863,24 +1868,25 @@ useEffect(() => {
                           }`}
                         />
                       </span>
-                      <span className="uppercase tracking-wide">
+                      <span className="uppercase tracking-wide whitespace-nowrap">
                         Auto Execute{" "}
                         {autoExecuteActive ? "Active" : "Deactive"}
                       </span>
                     </button>
-                    <p
-                      className={`text-[11px] md:text-xs text-center max-w-md ${
-                        autoExecuteActive
-                          ? "text-emerald-100"
-                          : "text-red-100"
+                    <span
+                      className={`text-[11px] md:text-xs text-left max-w-md ${
+                        autoExecuteActive ? "text-emerald-100" : "text-red-100"
                       }`}
                     >
                       {autoExecuteActive
                         ? "Execute will be done once the P/L crosses 3 USDT."
                         : "Order execute is disabled and will not execute on Binance even if P/L crosses 3 USDT."}
-                    </p>
+                    </span>
                   </div>
                 )}
+
+                {/* Right spacer to balance layout */}
+                <div className="flex-1" />
               </div>
             </div>
             <div className="flex">
