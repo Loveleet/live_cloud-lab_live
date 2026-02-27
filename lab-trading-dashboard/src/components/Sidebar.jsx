@@ -3,9 +3,10 @@ import { FaChartBar, FaExchangeAlt, FaCog } from "react-icons/fa";
 import { NavLink } from "react-router-dom";
 import { Home, BarChart, Users, FileText, Menu, X, Plus, Space, Activity } from "lucide-react";
 
-const SidebarItem = ({ icon: Icon, text, isOpen, to, isActive }) => (
+const SidebarItem = ({ icon: Icon, text, isOpen, to, target }) => (
   <NavLink
     to={to}
+    target={target}
     className={({ isActive }) => 
       `flex items-center space-x-4 px-4 py-3 hover:bg-gray-700 rounded-lg cursor-pointer transition-all ${
         isActive ? 'bg-gray-700 text-blue-400' : 'text-white'
@@ -68,6 +69,7 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
               text="Binance Trade History" 
               isOpen={isOpen} 
               to="/income-history"
+              target="_blank"
             />
           </li>
         </ul>

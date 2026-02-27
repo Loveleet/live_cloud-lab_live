@@ -17,6 +17,7 @@ import logging
 import re
 from psycopg2.errors import UniqueViolation
 from sqlalchemy.exc import IntegrityError
+import platform
 
 
 # from main_binance import CandleColor  # Importing the CandleColor function
@@ -172,13 +173,13 @@ API_KEYS = [
 
 # PostgreSQL Connection String - Update these values for your PostgreSQL server
 # Format: postgresql://username:password@host:port/database
-#local server
-#connection_string_postgresql = "postgresql://lab:IndiaNepal1-@192.168.18.14:5432/olab"
-
-#UTHO server
-connection_string_postgresql = "postgresql://lab:IndiaNepal1-@150.241.244.130:5432/olab"
-
-# connection_string_postgresql = "postgresql://lab:IndiaNepal1-@127.0.0.1:5432/olab"
+# If running on Ubuntu/Linux (cloud), use localhost; otherwise use LAN IP.
+if platform.system().lower() == "linux":
+    # Ubuntu / cloud server: PostgreSQL on same machine
+    connection_string_postgresql = "postgresql://lab:IndiaNepal1-@127.0.0.1:5432/olab"
+else:
+    # Windows / other: connect to LAN database server
+    connection_string_postgresql = "postgresql://lab:IndiaNepal1-@192.168.18.14:5432/olab"
 
 def olab_create_new_engine():
     return create_engine(

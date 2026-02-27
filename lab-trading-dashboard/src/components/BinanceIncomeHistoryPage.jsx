@@ -9,9 +9,9 @@ const BinanceIncomeHistoryPage = () => {
 
   const [filters, setFilters] = useState({
     symbol: "",
-    incomeType: "ALL",
     minPL: "",
   });
+  const [selectedPair, setSelectedPair] = useState(null);
 
   const loadHistory = async (options = { showSyncInfo: false }) => {
     setLoading(true);
@@ -53,26 +53,77 @@ const BinanceIncomeHistoryPage = () => {
     return Array.from(set).sort();
   }, [history]);
 
-  const filtered = useMemo(() => {
-    const minPLNum = parseFloat(filters.minPL);
-    return history.filter((row) => {
-      if (!row) return false;
+  const pairSummaries = useMemo(() => {
+    const bySymbol = new Map();
+    history.forEach((row) => {
+      if (!row) return;
       const symbol = (row.symbol || "").toUpperCase();
+      if (!symbol) return;
       const incomeType = (row.income_type || "").toUpperCase();
-      const incomeVal = typeof row.income === "number" ? row.income : parseFloat(row.income || "0");
+      const rawIncome =
+        typeof row.income === "number" ? row.income : parseFloat(row.income || "0");
+      const incomeVal = Number.isFinite(rawIncome) ? rawIncome : 0;
+      const timeVal = row.time ? new Date(row.time) : null;
 
-      if (filters.symbol && symbol !== filters.symbol.toUpperCase()) {
+      if (!bySymbol.has(symbol)) {
+        bySymbol.set(symbol, {
+          symbol,
+          profit: 0,
+          commission: 0,
+          lastTime: null,
+        });
+      }
+      const acc = bySymbol.get(symbol);
+      if (incomeType === "REALIZED_PNL") {
+        acc.profit += incomeVal;
+      } else if (incomeType === "COMMISSION") {
+        acc.commission += incomeVal;
+      }
+      if (timeVal && !Number.isNaN(timeVal.getTime())) {
+        if (!acc.lastTime || timeVal > acc.lastTime) {
+          acc.lastTime = timeVal;
+        }
+      }
+    });
+
+    const out = Array.from(bySymbol.values()).map((s) => ({
+      ...s,
+      total: s.profit + s.commission,
+    }));
+
+    // Sort by lastTime desc
+    out.sort((a, b) => {
+      if (!a.lastTime && !b.lastTime) return 0;
+      if (!a.lastTime) return 1;
+      if (!b.lastTime) return -1;
+      return b.lastTime.getTime() - a.lastTime.getTime();
+    });
+    return out;
+  }, [history]);
+
+  const filteredSummaries = useMemo(() => {
+    const minPLNum = parseFloat(filters.minPL);
+    return pairSummaries.filter((s) => {
+      if (filters.symbol && s.symbol !== filters.symbol.toUpperCase()) {
         return false;
       }
-      if (filters.incomeType !== "ALL" && incomeType !== filters.incomeType) {
-        return false;
-      }
-      if (!Number.isNaN(minPLNum) && incomeVal <= minPLNum) {
+      if (!Number.isNaN(minPLNum) && s.total <= minPLNum) {
         return false;
       }
       return true;
     });
-  }, [history, filters]);
+  }, [pairSummaries, filters]);
+
+  const detailRows = useMemo(() => {
+    if (!selectedPair) return [];
+    return history
+      .filter((row) => (row.symbol || "").toUpperCase() === selectedPair.toUpperCase())
+      .sort((a, b) => {
+        const ta = a.time ? new Date(a.time).getTime() : 0;
+        const tb = b.time ? new Date(b.time).getTime() : 0;
+        return tb - ta;
+      });
+  }, [history, selectedPair]);
 
   const handleFilterChange = (field, value) => {
     setFilters((prev) => ({
@@ -107,7 +158,6 @@ const BinanceIncomeHistoryPage = () => {
               onClick={() =>
                 setFilters({
                   symbol: "",
-                  incomeType: "ALL",
                   minPL: "",
                 })
               }
@@ -151,20 +201,6 @@ const BinanceIncomeHistoryPage = () => {
           </div>
           <div>
             <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">
-              Income type
-            </label>
-            <select
-              className="w-full px-2 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-[#111827] text-sm text-gray-900 dark:text-gray-100"
-              value={filters.incomeType}
-              onChange={(e) => handleFilterChange("incomeType", e.target.value)}
-            >
-              <option value="ALL">All</option>
-              <option value="REALIZED_PNL">REALIZED_PNL</option>
-              <option value="COMMISSION">COMMISSION</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">
               Min P/L (USDT)
             </label>
             <input
@@ -180,7 +216,7 @@ const BinanceIncomeHistoryPage = () => {
             <div className="text-xs text-gray-500 dark:text-gray-400">
               Rows:{" "}
               <span className="font-semibold">
-                {filtered.length} / {history.length}
+                {filteredSummaries.length} / {pairSummaries.length}
               </span>
             </div>
           </div>
@@ -198,95 +234,181 @@ const BinanceIncomeHistoryPage = () => {
         )}
 
         {!loading && !error && (
-          <div className="overflow-auto rounded-lg border border-gray-200 dark:border-gray-800">
-            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800 text-sm">
-              <thead className="bg-gray-50 dark:bg-[#020617]">
-                <tr>
-                  <th className="px-3 py-2 text-left font-semibold text-gray-700 dark:text-gray-200">
-                    Time
-                  </th>
-                  <th className="px-3 py-2 text-left font-semibold text-gray-700 dark:text-gray-200">
-                    Pair
-                  </th>
-                  <th className="px-3 py-2 text-left font-semibold text-gray-700 dark:text-gray-200">
-                    Income Type
-                  </th>
-                  <th className="px-3 py-2 text-right font-semibold text-gray-700 dark:text-gray-200">
-                    Income (USDT)
-                  </th>
-                  <th className="px-3 py-2 text-left font-semibold text-gray-700 dark:text-gray-200">
-                    Asset
-                  </th>
-                  <th className="px-3 py-2 text-left font-semibold text-gray-700 dark:text-gray-200">
-                    Info
-                  </th>
-                  <th className="px-3 py-2 text-left font-semibold text-gray-700 dark:text-gray-200">
-                    Tran ID
-                  </th>
-                  <th className="px-3 py-2 text-left font-semibold text-gray-700 dark:text-gray-200">
-                    Trade ID
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200 dark:divide-gray-800 bg-white dark:bg-[#020617]">
-                {filtered.map((row, idx) => {
-                  const incomeVal =
-                    typeof row.income === "number"
-                      ? row.income
-                      : parseFloat(row.income || "0");
-                  const isPositive = incomeVal > 0;
-                  const incomeClass = isPositive
-                    ? "text-emerald-500"
-                    : incomeVal < 0
-                    ? "text-red-500"
-                    : "text-gray-500";
-                  const timeText = row.time
-                    ? new Date(row.time).toLocaleString()
-                    : "";
-                  return (
-                    <tr key={`${row.tran_id || idx}-${row.income_type || ""}`}>
-                      <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-700 dark:text-gray-200">
-                        {timeText}
-                      </td>
-                      <td className="px-3 py-2 whitespace-nowrap text-xs font-semibold text-gray-900 dark:text-gray-100">
-                        {row.symbol || "-"}
-                      </td>
-                      <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-700 dark:text-gray-200">
-                        {row.income_type || "-"}
-                      </td>
-                      <td className="px-3 py-2 whitespace-nowrap text-xs text-right">
-                        <span className={incomeClass}>
-                          {incomeVal.toFixed(4)}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-700 dark:text-gray-200">
-                        {row.asset || "-"}
-                      </td>
-                      <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-700 dark:text-gray-200">
-                        {row.info || "-"}
-                      </td>
-                      <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-700 dark:text-gray-200">
-                        {row.tran_id || "-"}
-                      </td>
-                      <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-700 dark:text-gray-200">
-                        {row.trade_id || "-"}
+          <>
+            <div className="overflow-auto rounded-lg border border-gray-200 dark:border-gray-800 mb-6">
+              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800 text-sm">
+                <thead className="bg-gray-50 dark:bg-[#020617]">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-semibold text-gray-700 dark:text-gray-200">
+                      Time
+                    </th>
+                    <th className="px-3 py-2 text-left font-semibold text-gray-700 dark:text-gray-200">
+                      Pair
+                    </th>
+                    <th className="px-3 py-2 text-right font-semibold text-gray-700 dark:text-gray-200">
+                      Profit (REALIZED_PNL)
+                    </th>
+                    <th className="px-3 py-2 text-right font-semibold text-gray-700 dark:text-gray-200">
+                      Commission
+                    </th>
+                    <th className="px-3 py-2 text-right font-semibold text-gray-700 dark:text-gray-200">
+                      Total P/L after commission
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 dark:divide-gray-800 bg-white dark:bg-[#020617]">
+                  {filteredSummaries.map((row) => {
+                    const profit = row.profit || 0;
+                    const commission = row.commission || 0;
+                    const total = row.total || 0;
+                    const totalPositive = total > 0;
+                    const totalClass = totalPositive
+                      ? "text-emerald-500"
+                      : total < 0
+                      ? "text-red-500"
+                      : "text-gray-500";
+                    const timeText = row.lastTime
+                      ? row.lastTime.toLocaleString()
+                      : "";
+                    return (
+                      <tr
+                        key={row.symbol}
+                        className="cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-900"
+                        onClick={() => {
+                          setSelectedPair(row.symbol);
+                          setFilters((prev) => ({
+                            ...prev,
+                            symbol: row.symbol,
+                          }));
+                        }}
+                      >
+                        <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-700 dark:text-gray-200">
+                          {timeText}
+                        </td>
+                        <td className="px-3 py-2 whitespace-nowrap text-xs font-semibold text-gray-900 dark:text-gray-100">
+                          {row.symbol}
+                        </td>
+                        <td className="px-3 py-2 whitespace-nowrap text-xs text-right text-gray-700 dark:text-gray-200">
+                          {profit.toFixed(4)}
+                        </td>
+                        <td className="px-3 py-2 whitespace-nowrap text-xs text-right text-gray-700 dark:text-gray-200">
+                          {commission.toFixed(4)}
+                        </td>
+                        <td className="px-3 py-2 whitespace-nowrap text-xs text-right">
+                          <span className={totalClass}>{total.toFixed(4)}</span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {filteredSummaries.length === 0 && (
+                    <tr>
+                      <td
+                        className="px-3 py-6 text-center text-sm text-gray-500 dark:text-gray-400"
+                        colSpan={5}
+                      >
+                        No pairs match the current filters.
                       </td>
                     </tr>
-                  );
-                })}
-                {filtered.length === 0 && (
-                  <tr>
-                    <td
-                      className="px-3 py-6 text-center text-sm text-gray-500 dark:text-gray-400"
-                      colSpan={8}
-                    >
-                      No income history rows match the current filters.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="mt-6">
+              <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-2">
+                {selectedPair
+                  ? `Detail history for ${selectedPair}`
+                  : "Click a pair above to view detailed history"}
+              </h2>
+              {selectedPair && (
+                <div className="overflow-auto rounded-lg border border-gray-200 dark:border-gray-800">
+                  <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800 text-sm">
+                    <thead className="bg-gray-50 dark:bg-[#020617]">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-semibold text-gray-700 dark:text-gray-200">
+                          Time
+                        </th>
+                        <th className="px-3 py-2 text-left font-semibold text-gray-700 dark:text-gray-200">
+                          Income Type
+                        </th>
+                        <th className="px-3 py-2 text-right font-semibold text-gray-700 dark:text-gray-200">
+                          Income (USDT)
+                        </th>
+                        <th className="px-3 py-2 text-left font-semibold text-gray-700 dark:text-gray-200">
+                          Asset
+                        </th>
+                        <th className="px-3 py-2 text-left font-semibold text-gray-700 dark:text-gray-200">
+                          Info
+                        </th>
+                        <th className="px-3 py-2 text-left font-semibold text-gray-700 dark:text-gray-200">
+                          Tran ID
+                        </th>
+                        <th className="px-3 py-2 text-left font-semibold text-gray-700 dark:text-gray-200">
+                          Trade ID
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200 dark:divide-gray-800 bg-white dark:bg-[#020617]">
+                      {detailRows.map((row, idx) => {
+                        const incomeVal =
+                          typeof row.income === "number"
+                            ? row.income
+                            : parseFloat(row.income || "0");
+                        const isPositive = incomeVal > 0;
+                        const incomeClass = isPositive
+                          ? "text-emerald-500"
+                          : incomeVal < 0
+                          ? "text-red-500"
+                          : "text-gray-500";
+                        const timeText = row.time
+                          ? new Date(row.time).toLocaleString()
+                          : "";
+                        return (
+                          <tr key={`${row.tran_id || idx}-${row.income_type || ""}`}>
+                            <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-700 dark:text-gray-200">
+                              {timeText}
+                            </td>
+                            <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-700 dark:text-gray-200">
+                              {row.income_type || "-"}
+                            </td>
+                            <td className="px-3 py-2 whitespace-nowrap text-xs text-right">
+                              <span className={incomeClass}>
+                                {Number.isFinite(incomeVal)
+                                  ? incomeVal.toFixed(4)
+                                  : "0.0000"}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-700 dark:text-gray-200">
+                              {row.asset || "-"}
+                            </td>
+                            <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-700 dark:text-gray-200">
+                              {row.info || "-"}
+                            </td>
+                            <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-700 dark:text-gray-200">
+                              {row.tran_id || "-"}
+                            </td>
+                            <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-700 dark:text-gray-200">
+                              {row.trade_id || "-"}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {detailRows.length === 0 && (
+                        <tr>
+                          <td
+                            className="px-3 py-6 text-center text-sm text-gray-500 dark:text-gray-400"
+                            colSpan={7}
+                          >
+                            No detail rows for this pair.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </>
         )}
       </div>
     </div>
