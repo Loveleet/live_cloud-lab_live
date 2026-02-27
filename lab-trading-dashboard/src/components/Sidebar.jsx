@@ -1,7 +1,7 @@
 import React from "react";
 import { FaChartBar, FaExchangeAlt, FaCog } from "react-icons/fa";
 import { NavLink } from "react-router-dom";
-import { Home, BarChart, Users, FileText, Menu, X, Plus, Space, Activity } from "lucide-react";
+import { Home, BarChart, Users, FileText, Menu, X, Plus, Space, Activity, SquareStack } from "lucide-react";
 
 const SidebarItem = ({ icon: Icon, text, isOpen, to, target }) => (
   <NavLink
@@ -65,7 +65,7 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
           </li>
           <li>
             <SidebarItem 
-              icon={Activity} 
+              icon={SquareStack} 
               text="Binance Trade History" 
               isOpen={isOpen} 
               to="/income-history"
