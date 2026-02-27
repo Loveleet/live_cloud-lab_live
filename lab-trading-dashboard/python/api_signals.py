@@ -78,10 +78,28 @@ import os
 # Add utils directory to path to import main_binance
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'utils'))
 try:
-    from utils.main_binance import getAllOpenPosition, getOpenPosition, closeOrder, \
-     partial_close_position, close_hedge_position, setHedgeStopLoss, HedgeModePlaceOrder, \
-    getQuantity, NewOrderPlace, place_hedge_opposite, get_avail_balance, add_investment as main_binance_add_investment, client, um_get_open_orders
-    from utils.Final_olab_database import olab_sync_exchange_trades
+    from utils.main_binance import (
+        getAllOpenPosition,
+        getOpenPosition,
+        closeOrder,
+        partial_close_position,
+        close_hedge_position,
+        setHedgeStopLoss,
+        HedgeModePlaceOrder,
+        getQuantity,
+        NewOrderPlace,
+        place_hedge_opposite,
+        get_avail_balance,
+        add_investment as main_binance_add_investment,
+        client,
+        um_get_open_orders,
+        um_get_income_history,
+    )
+    from utils.Final_olab_database import (
+        olab_sync_exchange_trades,
+        olab_sync_income_history,
+        olab_get_income_history,
+    )
 except ImportError as e:
     _log(f"Could not import main_binance or Final_olab_database: {e}", "WARN")
     getAllOpenPosition = None
@@ -99,6 +117,9 @@ except ImportError as e:
     client = None
     olab_sync_exchange_trades = None
     um_get_open_orders = None
+    um_get_income_history = None
+    olab_sync_income_history = None
+    olab_get_income_history = None
 
 app = Flask(__name__)
 
@@ -265,6 +286,125 @@ def futures_balance():
     except Exception as e:
         _log(f"futures-balance | Error: {e}", "ERROR")
         return jsonify({"ok": False, "message": str(e)}), 500
+
+
+@app.route("/api/income-history", methods=["GET", "OPTIONS"])
+def income_history():
+    """
+    Fetch Binance income history (REALIZED_PNL + COMMISSION), sync to DB table income_history,
+    then return recent rows from the database.
+
+    Flow: api_signals -> main_binance.um_get_income_history -> Binance
+          then utils.Final_olab_database.olab_sync_income_history -> income_history table.
+    """
+    if request.method == "OPTIONS":
+        return "", 204
+
+    if um_get_income_history is None:
+        return jsonify(
+            {
+                "ok": False,
+                "message": "um_get_income_history not available",
+                "history": [],
+            }
+        ), 500
+
+    # Parse optional limit (how many rows to fetch from Binance and DB)
+    limit_param = request.args.get("limit") or request.args.get("max")
+    try:
+        limit = int(limit_param) if limit_param is not None else 1000
+        if limit <= 0:
+            limit = 1000
+        if limit > 1000:
+            limit = 1000
+    except (TypeError, ValueError):
+        limit = 1000
+
+    try:
+        _log(
+            f"income-history | Fetching from Binance: REALIZED_PNL + COMMISSION, limit={limit}"
+        )
+
+        realized = um_get_income_history(incomeType="REALIZED_PNL", limit=limit)
+        commission = um_get_income_history(incomeType="COMMISSION", limit=limit)
+
+        realized_list = realized if isinstance(realized, list) else []
+        commission_list = commission if isinstance(commission, list) else []
+        all_entries = realized_list + commission_list
+
+        sync_result = None
+        if olab_sync_income_history is not None and all_entries:
+            sync_result = olab_sync_income_history(all_entries)
+
+        # Read back from DB (preferred), otherwise fall back to raw Binance data
+        history_rows = []
+        if olab_get_income_history is not None:
+            history_rows = olab_get_income_history(limit=limit)
+        else:
+            for raw in all_entries:
+                try:
+                    income_type = str(
+                        raw.get("incomeType")
+                        or raw.get("income_type")
+                        or ""
+                    ).upper()
+                    symbol = (raw.get("symbol") or "").upper() or None
+                    income_str = raw.get("income") or "0"
+                    try:
+                        income_val = float(income_str)
+                    except (TypeError, ValueError):
+                        income_val = 0.0
+                    asset = (raw.get("asset") or "").upper() or None
+                    info = raw.get("info") or ""
+                    time_ms = raw.get("time") or raw.get("timestamp")
+                    if time_ms is not None:
+                        try:
+                            dt = __import__("datetime").datetime.fromtimestamp(
+                                int(time_ms) / 1000.0,
+                                tz=__import__("datetime").timezone.utc,
+                            )
+                            time_serialized = dt.isoformat()
+                        except Exception:
+                            time_serialized = None
+                    else:
+                        time_serialized = None
+                    tran_id = raw.get("tranId") or raw.get("tran_id")
+                    trade_id = raw.get("tradeId") or raw.get("trade_id")
+                    history_rows.append(
+                        {
+                            "symbol": symbol,
+                            "income_type": income_type,
+                            "income": income_val,
+                            "asset": asset,
+                            "info": info,
+                            "time": time_serialized,
+                            "tran_id": tran_id,
+                            "trade_id": trade_id,
+                        }
+                    )
+                except Exception:
+                    continue
+
+        return jsonify(
+            {
+                "ok": True,
+                "history": history_rows,
+                "sync": sync_result
+                or {
+                    "inserted": 0,
+                    "skipped": 0,
+                    "errors": [],
+                    "total_received": len(all_entries),
+                },
+            }
+        )
+    except Exception as e:
+        error_msg = str(e)
+        _log(f"income-history | Error: {error_msg}", "ERROR")
+        import traceback
+
+        traceback.print_exc()
+        return jsonify({"ok": False, "message": error_msg, "history": []}), 500
 
 
 @app.route("/api/open-position", methods=["GET", "OPTIONS"])

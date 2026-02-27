@@ -3683,4 +3683,233 @@ def olab_sync_exchange_trades(positions):
         olab_log_db_error(e, "olab_sync_exchange_trades", "main")
         return {"inserted_count": inserted_count, "updated_count": 0, "already_existed_count": already_existed_count, "errors": errors}
 
+
+def olab_ensure_income_history_table():
+    """Create income_history table (for Binance income/PNL history) if it does not exist."""
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS income_history (
+                        id BIGSERIAL PRIMARY KEY,
+                        symbol TEXT,
+                        income_type TEXT NOT NULL,
+                        income NUMERIC(32, 16) NOT NULL,
+                        asset TEXT,
+                        info TEXT,
+                        time TIMESTAMPTZ NOT NULL,
+                        tran_id BIGINT NOT NULL,
+                        trade_id TEXT
+                    );
+                    """
+                )
+            )
+            conn.execute(
+                text(
+                    """
+                    CREATE UNIQUE INDEX IF NOT EXISTS ux_income_history_type_tran
+                    ON income_history (income_type, tran_id);
+                    """
+                )
+            )
+    except Exception as e:
+        try:
+            olab_log_db_error(e, "olab_ensure_income_history_table", "income_history")
+        except Exception:
+            # Fallback logging if helper is unavailable
+            print(f"❌ olab_ensure_income_history_table error: {e}")
+
+
+def olab_sync_income_history(entries):
+    """
+    Insert Binance income history rows into income_history with de-duplication.
+
+    entries: list of dicts from client.get_income_history(...) for any incomeType.
+    De-duplicates using (income_type, tran_id) which Binance guarantees unique per user.
+    """
+    if not entries or not isinstance(entries, list):
+        return {"inserted": 0, "skipped": 0, "errors": [], "total_received": 0}
+
+    olab_ensure_income_history_table()
+
+    inserted = 0
+    skipped = 0
+    errors = []
+
+    try:
+        with engine.begin() as conn:
+            for raw in entries:
+                try:
+                    income_type = str(
+                        raw.get("incomeType")
+                        or raw.get("income_type")
+                        or ""
+                    ).upper()
+                    if not income_type:
+                        income_type = "UNKNOWN"
+
+                    symbol = (raw.get("symbol") or "").upper() or None
+                    income_str = raw.get("income") or "0"
+                    try:
+                        income_val = float(income_str)
+                    except (TypeError, ValueError):
+                        income_val = 0.0
+                    asset = (raw.get("asset") or "").upper() or None
+                    info = raw.get("info") or ""
+
+                    time_ms = raw.get("time") or raw.get("timestamp")
+                    if time_ms is None:
+                        dt = datetime.now(timezone.utc)
+                    else:
+                        try:
+                            dt = datetime.fromtimestamp(int(time_ms) / 1000.0, tz=timezone.utc)
+                        except Exception:
+                            dt = datetime.now(timezone.utc)
+
+                    tran_id_raw = raw.get("tranId") or raw.get("tran_id")
+                    if tran_id_raw is None:
+                        # If tranId missing, treat as non-deduplicated row
+                        tran_id = int(dt.timestamp() * 1000)
+                    else:
+                        tran_id = int(tran_id_raw)
+
+                    trade_id = raw.get("tradeId") or raw.get("trade_id")
+                    if trade_id is not None:
+                        trade_id = str(trade_id)
+
+                    result = conn.execute(
+                        text(
+                            """
+                            INSERT INTO income_history (
+                                symbol, income_type, income, asset, info,
+                                time, tran_id, trade_id
+                            )
+                            VALUES (
+                                :symbol, :income_type, :income, :asset, :info,
+                                :time, :tran_id, :trade_id
+                            )
+                            ON CONFLICT (income_type, tran_id) DO NOTHING
+                            """
+                        ),
+                        {
+                            "symbol": symbol,
+                            "income_type": income_type,
+                            "income": income_val,
+                            "asset": asset,
+                            "info": info,
+                            "time": dt,
+                            "tran_id": tran_id,
+                            "trade_id": trade_id,
+                        },
+                    )
+                    # rowcount is 1 if inserted, 0 if skipped due to conflict
+                    if getattr(result, "rowcount", 0) > 0:
+                        inserted += 1
+                    else:
+                        skipped += 1
+                except IntegrityError as e:
+                    # Unique constraint violation -> treat as skipped
+                    if isinstance(getattr(e, "orig", None), UniqueViolation):
+                        skipped += 1
+                    else:
+                        msg = f"IntegrityError in olab_sync_income_history: {e}"
+                        errors.append(msg)
+                        try:
+                            olab_log_db_error(e, "olab_sync_income_history", "insert")
+                        except Exception:
+                            print(msg)
+                except Exception as e:
+                    msg = f"Error in olab_sync_income_history for entry: {e}"
+                    errors.append(msg)
+                    try:
+                        olab_log_db_error(e, "olab_sync_income_history", "insert")
+                    except Exception:
+                        print(msg)
+    except Exception as e:
+        msg = f"Fatal error in olab_sync_income_history transaction: {e}"
+        errors.append(msg)
+        try:
+            olab_log_db_error(e, "olab_sync_income_history", "transaction")
+        except Exception:
+            print(msg)
+
+    return {
+        "inserted": inserted,
+        "skipped": skipped,
+        "errors": errors,
+        "total_received": len(entries),
+    }
+
+
+def olab_get_income_history(limit=1000):
+    """
+    Read recent income_history rows ordered by time desc.
+
+    Returns a list of dicts ready for JSON serialization.
+    """
+    olab_ensure_income_history_table()
+
+    try:
+        limit_val = int(limit)
+        if limit_val <= 0:
+            limit_val = 1000
+    except (TypeError, ValueError):
+        limit_val = 1000
+
+    rows_out = []
+    try:
+        with engine.begin() as conn:
+            result = conn.execute(
+                text(
+                    """
+                    SELECT
+                        symbol,
+                        income_type,
+                        income,
+                        asset,
+                        info,
+                        time,
+                        tran_id,
+                        trade_id
+                    FROM income_history
+                    ORDER BY time DESC
+                    LIMIT :limit
+                    """
+                ),
+                {"limit": limit_val},
+            )
+            for row in result.mappings():
+                time_val = row.get("time")
+                if hasattr(time_val, "isoformat"):
+                    time_serialized = time_val.isoformat()
+                else:
+                    time_serialized = str(time_val) if time_val is not None else None
+
+                income_val = row.get("income")
+                try:
+                    income_serialized = float(income_val) if income_val is not None else 0.0
+                except (TypeError, ValueError):
+                    income_serialized = 0.0
+
+                rows_out.append(
+                    {
+                        "symbol": row.get("symbol"),
+                        "income_type": row.get("income_type"),
+                        "income": income_serialized,
+                        "asset": row.get("asset"),
+                        "info": row.get("info"),
+                        "time": time_serialized,
+                        "tran_id": row.get("tran_id"),
+                        "trade_id": row.get("trade_id"),
+                    }
+                )
+    except Exception as e:
+        try:
+            olab_log_db_error(e, "olab_get_income_history", f"limit={limit}")
+        except Exception:
+            print(f"❌ olab_get_income_history error: {e}")
+
+    return rows_out
+
 # print(get_cnt_pl_more_than_sixty('SELL', 20,5))

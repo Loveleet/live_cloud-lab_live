@@ -736,6 +736,22 @@ app.get("/api/futures-balance", async (req, res) => {
   }
 });
 
+app.get("/api/income-history", async (req, res) => {
+  try {
+    const qs = new URLSearchParams(req.query || {}).toString();
+    const url = `${PYTHON_SIGNALS_URL}/api/income-history${qs ? `?${qs}` : ""}`;
+    const resp = await fetch(url, {
+      method: "GET",
+      signal: AbortSignal.timeout(30000),
+    });
+    const data = await resp.json().catch(() => ({}));
+    res.status(resp.status || 200).json(data);
+  } catch (err) {
+    console.error("[income-history] Proxy error:", err.message);
+    res.status(502).json({ ok: false, message: err.message || "Python income-history service unavailable" });
+  }
+});
+
 app.post("/api/calculate-signals", async (req, res) => {
   try {
     const resp = await fetch(`${PYTHON_SIGNALS_URL}/api/calculate-signals`, {

@@ -62,6 +62,14 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
               to="/reports"
             />
           </li>
+          <li>
+            <SidebarItem 
+              icon={Activity} 
+              text="Binance Trade History" 
+              isOpen={isOpen} 
+              to="/income-history"
+            />
+          </li>
         </ul>
       </nav>
     </div>

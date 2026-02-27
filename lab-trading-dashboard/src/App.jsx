@@ -12,6 +12,7 @@ import CustomChartGrid from "./components/CustomChartGrid";
 import PairStatsGrid from "./components/PairStatsGrid";
 // import SettingsPage from './components/SettingsPage';
 import ReportDashboard from './components/ReportDashboard';
+import BinanceIncomeHistoryPage from './components/BinanceIncomeHistoryPage';
 import ListViewPage from './components/ListViewPage';
 import LiveTradeViewPage from './components/LiveTradeViewPage';
 import LiveRunningTradesPage from './components/LiveRunningTradesPage';
@@ -1777,6 +1778,7 @@ useEffect(() => {
         <Route path="/custom-chart-grid" element={<CustomChartGrid trades={filteredTradeData} />} />
         <Route path="/reports" element={<ReportDashboard />} />
         <Route path="/reports/list" element={<ListViewPage />} />
+        <Route path="/income-history" element={<BinanceIncomeHistoryPage />} />
         <Route path="/live-trade-view" element={<LiveTradeViewPage />} />
         <Route path="/live-running-trades" element={<LiveRunningTradesPage />} />
         <Route path="/pages/group-view" element={<GroupViewPage />} />
