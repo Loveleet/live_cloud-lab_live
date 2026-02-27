@@ -130,6 +130,10 @@ const BinanceIncomeHistoryPage = () => {
       ...prev,
       [field]: value,
     }));
+    // If user changes the pair from dropdown, hide details
+    if (field === "symbol") {
+      setSelectedPair(null);
+    }
   };
 
   return (
