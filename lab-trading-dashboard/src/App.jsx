@@ -1812,64 +1812,76 @@ useEffect(() => {
                   initialAutoOn={true}
                 />
               </div>
-              {/* Right side: Auto Execute status (Sound, Theme, Logout are in the global bar above) */}
-              <div className="absolute right-4 top-3 z-20">
-                {autoExecuteActive !== null && (
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      try {
-                        const res = await apiFetch("/api/auto-execute/toggle", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({}),
-                        });
-                        const data = await res.json().catch(() => ({}));
-                        if (res.ok && typeof data.active === "boolean") {
-                          setAutoExecuteActive(data.active);
-                        }
-                      } catch {
-                        // ignore toggle errors for now
-                      }
-                    }}
-                    className={`relative inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold border ${
-                      autoExecuteActive
-                        ? "border-emerald-500 bg-emerald-900/40 text-emerald-200"
-                        : "border-red-500 bg-red-900/40 text-red-200"
-                    }`}
-                  >
-                    <span className="relative flex h-2.5 w-2.5">
-                      <span
-                        className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
-                          autoExecuteActive ? "bg-emerald-400" : "bg-red-400"
-                        }`}
-                      />
-                      <span
-                        className={`relative inline-flex rounded-full h-2.5 w-2.5 ${
-                          autoExecuteActive ? "bg-emerald-500" : "bg-red-500"
-                        }`}
-                      />
-                    </span>
-                    <span>
-                      Auto Execute{" "}
-                      {autoExecuteActive ? "Active" : "Deactive"}
-                    </span>
-                  </button>
-                )}
-              </div>
               {/* SVG Graph Background (animated) */}
               <AnimatedGraphBackground width={400} height={48} opacity={0.4} />
               {/* LAB text */}
-              <h1
-                className="relative z-10 text-5xl font-extrabold text-center bg-gradient-to-r from-blue-500 via-pink-500 to-yellow-400 bg-clip-text text-transparent drop-shadow-lg tracking-tight animate-pulse"
-                style={{
-                  WebkitTextStroke: '1px #222',
-                  textShadow: '0 4px 24px rgba(0,0,0,0.18)',
-                }}
-              >
-                LAB
-                <span className="block w-16 h-1 mx-auto mt-2 rounded-full bg-gradient-to-r from-blue-400 via-pink-400 to-yellow-300 animate-gradient-x"></span>
-              </h1>
+              <div className="flex flex-col items-center gap-3">
+                <h1
+                  className="relative z-10 text-5xl font-extrabold text-center bg-gradient-to-r from-blue-500 via-pink-500 to-yellow-400 bg-clip-text text-transparent drop-shadow-lg tracking-tight animate-pulse"
+                  style={{
+                    WebkitTextStroke: '1px #222',
+                    textShadow: '0 4px 24px rgba(0,0,0,0.18)',
+                  }}
+                >
+                  LAB
+                  <span className="block w-16 h-1 mx-auto mt-2 rounded-full bg-gradient-to-r from-blue-400 via-pink-400 to-yellow-300 animate-gradient-x"></span>
+                </h1>
+                {autoExecuteActive !== null && (
+                  <div className="flex flex-col items-center gap-1 mt-1">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          const res = await apiFetch("/api/auto-execute/toggle", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({}),
+                          });
+                          const data = await res.json().catch(() => ({}));
+                          if (res.ok && typeof data.active === "boolean") {
+                            setAutoExecuteActive(data.active);
+                          }
+                        } catch {
+                          // ignore toggle errors for now
+                        }
+                      }}
+                      className={`relative inline-flex items-center gap-2 px-5 py-2 rounded-full text-sm font-semibold border shadow-md ${
+                        autoExecuteActive
+                          ? "border-emerald-400 bg-emerald-900/60 text-emerald-100"
+                          : "border-red-400 bg-red-900/60 text-red-100"
+                      }`}
+                    >
+                      <span className="relative flex h-3 w-3">
+                        <span
+                          className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
+                            autoExecuteActive ? "bg-emerald-300" : "bg-red-300"
+                          }`}
+                        />
+                        <span
+                          className={`relative inline-flex rounded-full h-3 w-3 ${
+                            autoExecuteActive ? "bg-emerald-500" : "bg-red-500"
+                          }`}
+                        />
+                      </span>
+                      <span className="uppercase tracking-wide">
+                        Auto Execute{" "}
+                        {autoExecuteActive ? "Active" : "Deactive"}
+                      </span>
+                    </button>
+                    <p
+                      className={`text-[11px] md:text-xs text-center max-w-md ${
+                        autoExecuteActive
+                          ? "text-emerald-100"
+                          : "text-red-100"
+                      }`}
+                    >
+                      {autoExecuteActive
+                        ? "Execute will be done once the P/L crosses 3 USDT."
+                        : "Order execute is disabled and will not execute on Binance even if P/L crosses 3 USDT."}
+                    </p>
+                  </div>
+                )}
+              </div>
             </div>
             <div className="flex">
               {/* Sidebar */}
