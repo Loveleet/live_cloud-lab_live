@@ -1828,7 +1828,7 @@ useEffect(() => {
               {/* Center: Auto Execute — centered, fixed width so it doesn't move when toggling */}
               {autoExecuteMode !== null && (
                 <div className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center">
-                  <div className="flex items-center gap-5 justify-center py-2 px-5 rounded-xl bg-gray-100/80 dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700 shadow-sm w-[380px] min-w-[380px] max-w-[380px]">
+                  <div className="flex items-center gap-4 justify-center py-2 px-4 rounded-xl bg-gray-100/80 dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700 shadow-sm w-[480px] min-w-[480px] max-w-[480px] box-border">
                     <span className="text-sm font-semibold text-gray-600 dark:text-gray-300 flex-shrink-0">Auto Execute</span>
                     <div className="flex items-center gap-4 flex-shrink-0">
                       <label className="inline-flex items-center gap-2 cursor-pointer select-none">
@@ -1881,13 +1881,20 @@ useEffect(() => {
                       </label>
                     </div>
                     <span
-                      className={`text-sm px-3 py-1.5 rounded-lg font-medium whitespace-nowrap min-w-[260px] text-center ${
+                      className={`text-sm px-3 py-1.5 rounded-lg font-medium min-w-0 w-[220px] max-w-[220px] overflow-hidden break-words line-clamp-2 block text-center box-border ${
                         autoExecuteMode.buyActive && autoExecuteMode.sellActive
                           ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-300/50 dark:border-emerald-600/50"
                           : !autoExecuteMode.buyActive && !autoExecuteMode.sellActive
                           ? "bg-red-500/15 text-red-700 dark:text-red-300 border border-red-300/50 dark:border-red-600/50"
                           : "bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-300/50 dark:border-amber-600/50"
                       }`}
+                      title={autoExecuteMode.buyActive && autoExecuteMode.sellActive
+                        ? "Execute will be done once the P/L crosses 3 USDT."
+                        : !autoExecuteMode.buyActive && !autoExecuteMode.sellActive
+                        ? "Buy and Sell both are deactive."
+                        : !autoExecuteMode.buyActive
+                        ? "Buy is deactive."
+                        : "Sell is deactive."}
                     >
                       {autoExecuteMode.buyActive && autoExecuteMode.sellActive
                         ? "Execute will be done once the P/L crosses 3 USDT."
