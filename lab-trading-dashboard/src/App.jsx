@@ -1889,7 +1889,7 @@ useEffect(() => {
                           : "bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-300/50 dark:border-amber-600/50"
                       }`}
                       title={autoExecuteMode.buyActive && autoExecuteMode.sellActive
-                        ? "Execute will be done once the P/L crosses 3 USDT."
+                        ? "Execute will be done once the P/L crosses 3 USDT for both buy and sell."
                         : !autoExecuteMode.buyActive && !autoExecuteMode.sellActive
                         ? "Buy and Sell both are deactive."
                         : !autoExecuteMode.buyActive
