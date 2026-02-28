@@ -90,7 +90,7 @@ const TradeFilterPanel = ({
 
 
   return (
-    <div className="w-full columns-1 sm:columns-2 md:columns-3 lg:columns-4 xl:columns-5 gap-4">
+    <div className="w-full max-w-full min-w-0 columns-1 sm:columns-2 md:columns-3 lg:columns-4 xl:columns-5 gap-4">
       {/* Signal Filter Group */}
       <div className="break-inside-avoid mb-4 bg-gradient-to-br from-blue-50 via-white to-blue-100 dark:from-blue-900 dark:via-gray-900 dark:to-blue-950 rounded-2xl shadow-lg border border-blue-200 dark:border-blue-800 p-4 gap-2">
         <div className="flex items-center gap-2 mb-2">

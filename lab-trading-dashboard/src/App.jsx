@@ -144,7 +144,7 @@ const App = () => {
   const [emaTrends, setEmaTrends] = useState(null);
   const [timeAgoTick, setTimeAgoTick] = useState(0); // tick every 1 min to refresh "X min ago" for last_updated
   const [activeLossFlags, setActiveLossFlags] = useState(null);
-  const [autoExecuteActive, setAutoExecuteActive] = useState(null);
+  const [autoExecuteMode, setAutoExecuteMode] = useState(null); // { buyActive, sellActive } or null
   // Expose superTrendData for focused debugging (must be at top level, not inside render logic)
   useEffect(() => {
     window._superTrendData = superTrendData;
@@ -505,18 +505,20 @@ const [selectedIntervals, setSelectedIntervals] = useState(() => {
         setActiveLossFlags(null);
       }
 
-      // Fetch Auto Execute (LiveAutoActive) status
+      // Fetch Auto Execute (LiveAutoActive) status — buyActive, sellActive
       try {
         console.log("[API DEBUG] fetch /api/auto-execute");
         const autoRes = await apiFetch("/api/auto-execute");
         const autoJson = autoRes.ok ? await autoRes.json() : null;
-        if (autoJson && typeof autoJson.active === "boolean") {
-          setAutoExecuteActive(autoJson.active);
+        if (autoJson && typeof autoJson.buyActive === "boolean" && typeof autoJson.sellActive === "boolean") {
+          setAutoExecuteMode({ buyActive: autoJson.buyActive, sellActive: autoJson.sellActive });
+        } else if (autoJson && typeof autoJson.active === "boolean") {
+          setAutoExecuteMode({ buyActive: autoJson.active, sellActive: autoJson.active });
         } else {
-          setAutoExecuteActive(null);
+          setAutoExecuteMode(null);
         }
       } catch {
-        setAutoExecuteActive(null);
+        setAutoExecuteMode(null);
       }
 
       // Build unified machine list (machines endpoint + trades machine ids)
@@ -1802,99 +1804,112 @@ useEffect(() => {
         <Route path="/*" element={
           <>
             {/* Sticky LAB section at the very top of the app, outside the main flex container */}
-            <div className="sticky top-0 z-40 flex justify-center items-center border-b border-gray-200 dark:border-gray-700 shadow-sm bg-[#f5f6fa] dark:bg-black" style={{ minHeight: '80px', height: '80px', padding: '0 16px' }}>
-              {/* Refresh controls (left) */}
-              <div className="absolute left-4 top-3 z-20">
+            <div className="sticky top-0 z-40 flex items-center justify-between border-b border-gray-200 dark:border-gray-700 shadow-sm bg-[#f5f6fa] dark:bg-black w-full max-w-full overflow-hidden gap-4" style={{ minHeight: '80px', height: '80px', padding: '0 16px' }}>
+              {/* Left: Refresh + LAB */}
+              <div className="flex items-center gap-6 flex-shrink-0 min-w-0">
                 <RefreshControls
                   onRefresh={refreshAllData}
                   storageKey="app_main"
                   initialIntervalSec={20}
                   initialAutoOn={true}
                 />
+                <h1
+                  className="text-3xl md:text-4xl font-extrabold bg-gradient-to-r from-blue-500 via-pink-500 to-yellow-400 bg-clip-text text-transparent drop-shadow-lg tracking-tight flex-shrink-0"
+                  style={{
+                    WebkitTextStroke: '1px #222',
+                    textShadow: '0 4px 24px rgba(0,0,0,0.18)',
+                  }}
+                >
+                  LAB
+                  <span className="block w-12 h-0.5 mt-1 rounded-full bg-gradient-to-r from-blue-400 via-pink-400 to-yellow-300"></span>
+                </h1>
               </div>
-              {/* SVG Graph Background (animated) */}
-              <AnimatedGraphBackground width={400} height={48} opacity={0.4} />
-              {/* LAB left, Auto Execute center with inline text */}
-              <div className="relative z-10 flex items-left w-full px-72">
-                {/* Left: LAB brand */}
-                <div className="flex items-center flex-1">
-                  <h1
-                    className="text-4xl md:text-5xl font-extrabold bg-gradient-to-r from-blue-500 via-pink-500 to-yellow-400 bg-clip-text text-transparent drop-shadow-lg tracking-tight animate-pulse"
-                    style={{
-                      WebkitTextStroke: '1px #222',
-                      textShadow: '0 4px 24px rgba(0,0,0,0.18)',
-                    }}
-                  >
-                    LAB
-                    <span className="block w-16 h-1 mt-2 rounded-full bg-gradient-to-r from-blue-400 via-pink-400 to-yellow-300 animate-gradient-x"></span>
-                  </h1>
-                </div>
 
-                {/* Center: Auto Execute button + inline text */}
-                {autoExecuteActive !== null && (
-                  <div className="flex-1 flex items-center justify-center">
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        try {
-                          const res = await apiFetch("/api/auto-execute/toggle", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({}),
-                          });
-                          const data = await res.json().catch(() => ({}));
-                          if (res.ok && typeof data.active === "boolean") {
-                            setAutoExecuteActive(data.active);
-                          }
-                        } catch {
-                          // ignore toggle errors for now
-                        }
-                      }}
-                      className={`relative inline-flex items-center gap-2 px-5 py-2 rounded-full text-sm font-semibold border shadow-md mr-3 ${
-                        autoExecuteActive
-                          ? "border-emerald-400 bg-emerald-900/60 text-emerald-100"
-                          : "border-red-400 bg-red-900/60 text-red-100"
-                      }`}
-                    >
-                      <span className="relative flex h-3 w-3">
-                        <span
-                          className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
-                            autoExecuteActive ? "bg-emerald-300" : "bg-red-300"
-                          }`}
+              {/* Center: Auto Execute — centered, fixed width so it doesn't move when toggling */}
+              {autoExecuteMode !== null && (
+                <div className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center">
+                  <div className="flex items-center gap-5 justify-center py-2 px-5 rounded-xl bg-gray-100/80 dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700 shadow-sm w-[380px] min-w-[380px] max-w-[380px]">
+                    <span className="text-sm font-semibold text-gray-600 dark:text-gray-300 flex-shrink-0">Auto Execute</span>
+                    <div className="flex items-center gap-4 flex-shrink-0">
+                      <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={!!autoExecuteMode.buyActive}
+                          onChange={async () => {
+                            const next = !autoExecuteMode.buyActive;
+                            try {
+                              const res = await apiFetch("/api/auto-execute/set", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ buyActive: next, sellActive: autoExecuteMode.sellActive }),
+                              });
+                              const data = await res.json().catch(() => ({}));
+                              if (res.ok && data.buyActive !== undefined && data.sellActive !== undefined) {
+                                setAutoExecuteMode({ buyActive: data.buyActive, sellActive: data.sellActive });
+                              }
+                            } catch {
+                              // ignore
+                            }
+                          }}
+                          className="w-4 h-4 rounded border-gray-400 dark:border-gray-500 text-emerald-500 focus:ring-2 focus:ring-emerald-500/50"
                         />
-                        <span
-                          className={`relative inline-flex rounded-full h-3 w-3 ${
-                            autoExecuteActive ? "bg-emerald-500" : "bg-red-500"
-                          }`}
+                        <span className="text-sm font-medium text-gray-700 dark:text-gray-200">Buy</span>
+                      </label>
+                      <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={!!autoExecuteMode.sellActive}
+                          onChange={async () => {
+                            const next = !autoExecuteMode.sellActive;
+                            try {
+                              const res = await apiFetch("/api/auto-execute/set", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ buyActive: autoExecuteMode.buyActive, sellActive: next }),
+                              });
+                              const data = await res.json().catch(() => ({}));
+                              if (res.ok && data.buyActive !== undefined && data.sellActive !== undefined) {
+                                setAutoExecuteMode({ buyActive: data.buyActive, sellActive: data.sellActive });
+                              }
+                            } catch {
+                              // ignore
+                            }
+                          }}
+                          className="w-4 h-4 rounded border-gray-400 dark:border-gray-500 text-emerald-500 focus:ring-2 focus:ring-emerald-500/50"
                         />
-                      </span>
-                      <span className="uppercase tracking-wide whitespace-nowrap">
-                        Auto Execute{" "}
-                        {autoExecuteActive ? "Active" : "Deactive"}
-                      </span>
-                    </button>
+                        <span className="text-sm font-medium text-gray-700 dark:text-gray-200">Sell</span>
+                      </label>
+                    </div>
                     <span
-                      className={`text-[24px] md:text-lg bg-white px-6 rounded-full font-bold text-left whitespace-nowrap ${
-                        autoExecuteActive ? "text-green-800" : "text-red-500"
+                      className={`text-sm px-3 py-1.5 rounded-lg font-medium whitespace-nowrap min-w-[260px] text-center ${
+                        autoExecuteMode.buyActive && autoExecuteMode.sellActive
+                          ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-300/50 dark:border-emerald-600/50"
+                          : !autoExecuteMode.buyActive && !autoExecuteMode.sellActive
+                          ? "bg-red-500/15 text-red-700 dark:text-red-300 border border-red-300/50 dark:border-red-600/50"
+                          : "bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-300/50 dark:border-amber-600/50"
                       }`}
                     >
-                      {autoExecuteActive
+                      {autoExecuteMode.buyActive && autoExecuteMode.sellActive
                         ? "Execute will be done once the P/L crosses 3 USDT."
-                        : "Order execute is disabled and will not execute on Binance even if P/L crosses 3 USDT."}
+                        : !autoExecuteMode.buyActive && !autoExecuteMode.sellActive
+                        ? "Buy and Sell both are deactive."
+                        : !autoExecuteMode.buyActive
+                        ? "Buy is deactive."
+                        : "Sell is deactive."}
                     </span>
                   </div>
-                )}
+                </div>
+              )}
 
-                {/* Right spacer to balance layout */}
-                <div className="flex-1" />
-              </div>
+              {/* Right: flexible spacer so center stays visually centered */}
+              <div className="flex-1 min-w-0 max-w-[180px] md:max-w-[200px]" aria-hidden="true" />
             </div>
-            <div className="flex">
+            <div className="flex min-w-0 w-full max-w-full">
               {/* Sidebar */}
               <Sidebar isOpen={isSidebarOpen} toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} />
-              <div className={`flex-1 min-h-screen transition-all duration-300 ${isSidebarOpen ? "ml-64" : "ml-20"} overflow-hidden relative bg-[#f5f6fa] dark:bg-black`}>
-                {/* Main content area, no extra margin-top */}
-                <div className="p-8 pt-2 overflow-x-auto">
+              <div className={`flex-1 min-h-screen min-w-0 max-w-full transition-all duration-300 ${isSidebarOpen ? "ml-64" : "ml-20"} overflow-x-auto overflow-y-auto relative bg-[#f5f6fa] dark:bg-black`}>
+                {/* Main content area, no extra margin-top — contained to prevent overflow */}
+                <div className="p-8 pt-2 w-full max-w-full min-w-0">
                   {corsError && (
                     <div className="mb-4 p-4 rounded-lg bg-red-100 dark:bg-red-900/40 border border-red-400 dark:border-red-600 text-red-900 dark:text-red-100 text-sm">
                       <strong className="block mb-2">❌ CORS Error: Cloud server not allowing GitHub Pages origin</strong>
@@ -2130,15 +2145,15 @@ useEffect(() => {
   </div>
 
   {/* SuperTrend + EMA group (inline if space; wraps under if not) */}
-  <div className=" flex flex-wrap items-start gap-4 flex-1 min-w-[280px]">
+  <div className="flex flex-wrap items-start gap-4 flex-1 min-w-0">
     {/* SuperTrend: fixed width on sm+; full width on xs */}
-    <div className="w-full sm:w-[300px] md:w-[360px] shrink-0">
+    <div className="w-full sm:w-[300px] md:w-[360px] shrink-0 min-w-0">
       <SuperTrendPanel data={superTrendData} />
     </div>
 
     {/* EMA Grid — all 4 aligned: header on top, value below */}
     {emaTrends && (
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 flex-1 min-w-[280px]">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 flex-1 min-w-0">
         {(() => {
           const getTimeAgo = (lastUpdated) => {
             try {
