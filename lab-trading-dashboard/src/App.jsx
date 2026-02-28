@@ -145,6 +145,7 @@ const App = () => {
   const [timeAgoTick, setTimeAgoTick] = useState(0); // tick every 1 min to refresh "X min ago" for last_updated
   const [activeLossFlags, setActiveLossFlags] = useState(null);
   const [autoExecuteMode, setAutoExecuteMode] = useState(null); // { buyActive, sellActive } or null
+  const [manageAutoPosition, setManageAutoPosition] = useState(null); // true | false | null (loading)
   // Expose superTrendData for focused debugging (must be at top level, not inside render logic)
   useEffect(() => {
     window._superTrendData = superTrendData;
@@ -519,6 +520,19 @@ const [selectedIntervals, setSelectedIntervals] = useState(() => {
         }
       } catch {
         setAutoExecuteMode(null);
+      }
+
+      // Fetch Manage Auto Position
+      try {
+        const mapRes = await apiFetch("/api/manage-auto-position");
+        const mapJson = mapRes.ok ? await mapRes.json() : null;
+        if (mapJson && typeof mapJson.enabled === "boolean") {
+          setManageAutoPosition(mapJson.enabled);
+        } else {
+          setManageAutoPosition(false);
+        }
+      } catch {
+        setManageAutoPosition(false);
       }
 
       // Build unified machine list (machines endpoint + trades machine ids)
@@ -1825,9 +1839,9 @@ useEffect(() => {
                 </h1>
               </div>
 
-              {/* Center: Auto Execute — centered, fixed width so it doesn't move when toggling */}
+              {/* Center: Auto Execute + Manage Auto Position — centered */}
               {autoExecuteMode !== null && (
-                <div className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center">
+                <div className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center gap-4">
                   <div className="flex items-center gap-4 justify-center py-2 px-4 rounded-xl bg-gray-100/80 dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700 shadow-sm w-[480px] min-w-[480px] max-w-[480px] box-border">
                     <span className="text-sm font-semibold text-gray-600 dark:text-gray-300 flex-shrink-0">Auto Execute</span>
                     <div className="flex items-center gap-4 flex-shrink-0">
@@ -1903,6 +1917,29 @@ useEffect(() => {
                         : !autoExecuteMode.buyActive
                         ? "Buy is deactive."
                         : "Sell is deactive."}
+                    </span>
+                  </div>
+                  {/* Manage Auto Position — next to Auto Execute card */}
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          const res = await apiFetch("/api/manage-auto-position/toggle", { method: "POST" });
+                          const data = await res.json().catch(() => ({}));
+                          if (res.ok && typeof data.enabled === "boolean") {
+                            setManageAutoPosition(data.enabled);
+                          }
+                        } catch {
+                          // ignore
+                        }
+                      }}
+                      className="px-3 py-1.5 rounded-lg text-sm font-medium bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 border border-gray-300 dark:border-gray-600 transition-colors"
+                    >
+                      Manage Auto Position
+                    </button>
+                    <span className="text-sm font-semibold text-gray-700 dark:text-gray-300 min-w-[2.5rem]">
+                      {manageAutoPosition === null ? "—" : manageAutoPosition ? "true" : "false"}
                     </span>
                   </div>
                 </div>
