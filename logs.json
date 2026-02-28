@@ -1,0 +1,802 @@
+[
+    {
+        "trade_id": "584412",
+        "status": "successful",
+        "error": "API error",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": true,
+        "auto_resolved": true
+    },
+    {
+        "trade_id": "164198",
+        "status": "failed",
+        "error": "Execution timeout",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": false,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "329009",
+        "status": "successful",
+        "error": "Insufficient funds",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": true,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "121920",
+        "status": "successful",
+        "error": "Execution timeout",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": true,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "683131",
+        "status": "failed",
+        "error": "Insufficient funds",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": false,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "507952",
+        "status": "successful",
+        "error": "API error",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": false,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "382177",
+        "status": "successful",
+        "error": "Execution timeout",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": false,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "542716",
+        "status": "successful",
+        "error": "Insufficient funds",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": true,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "246912",
+        "status": "failed",
+        "error": "Insufficient funds",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": true,
+        "auto_resolved": true
+    },
+    {
+        "trade_id": "317718",
+        "status": "failed",
+        "error": "Execution timeout",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": false,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "161748",
+        "status": "successful",
+        "error": "API error",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": false,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "649582",
+        "status": "successful",
+        "error": "API error",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": false,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "634038",
+        "status": "failed",
+        "error": "Insufficient funds",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": true,
+        "auto_resolved": true
+    },
+    {
+        "trade_id": "425110",
+        "status": "failed",
+        "error": "Execution timeout",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": false,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "352127",
+        "status": "successful",
+        "error": "Price slippage",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": false,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "321403",
+        "status": "failed",
+        "error": "Execution timeout",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": false,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "347728",
+        "status": "successful",
+        "error": "API error",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": false,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "900758",
+        "status": "successful",
+        "error": "API error",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": true,
+        "auto_resolved": true
+    },
+    {
+        "trade_id": "911128",
+        "status": "successful",
+        "error": "Insufficient funds",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": false,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "953360",
+        "status": "failed",
+        "error": "Price slippage",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": true,
+        "auto_resolved": true
+    },
+    {
+        "trade_id": "813207",
+        "status": "failed",
+        "error": "Execution timeout",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": true,
+        "auto_resolved": true
+    },
+    {
+        "trade_id": "927461",
+        "status": "failed",
+        "error": "Insufficient funds",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": false,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "667884",
+        "status": "failed",
+        "error": "Execution timeout",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": false,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "995681",
+        "status": "successful",
+        "error": "API error",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": false,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "841740",
+        "status": "failed",
+        "error": "Price slippage",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": false,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "305074",
+        "status": "failed",
+        "error": "API error",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": true,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "921386",
+        "status": "failed",
+        "error": "API error",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": true,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "511081",
+        "status": "failed",
+        "error": "Insufficient funds",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": false,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "294732",
+        "status": "failed",
+        "error": "Price slippage",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": false,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "438228",
+        "status": "failed",
+        "error": "API error",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": false,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "278187",
+        "status": "failed",
+        "error": "Insufficient funds",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": false,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "924046",
+        "status": "failed",
+        "error": "Insufficient funds",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": true,
+        "auto_resolved": true
+    },
+    {
+        "trade_id": "677756",
+        "status": "failed",
+        "error": "Price slippage",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": true,
+        "auto_resolved": true
+    },
+    {
+        "trade_id": "504485",
+        "status": "successful",
+        "error": "API error",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": false,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "223668",
+        "status": "successful",
+        "error": "Execution timeout",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": true,
+        "auto_resolved": true
+    },
+    {
+        "trade_id": "289303",
+        "status": "failed",
+        "error": "Execution timeout",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": true,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "251539",
+        "status": "failed",
+        "error": "Price slippage",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": false,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "312062",
+        "status": "successful",
+        "error": "Price slippage",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": false,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "567396",
+        "status": "failed",
+        "error": "API error",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": false,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "713689",
+        "status": "successful",
+        "error": "API error",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": false,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "177569",
+        "status": "failed",
+        "error": "API error",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": false,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "383955",
+        "status": "failed",
+        "error": "Insufficient funds",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": true,
+        "auto_resolved": true
+    },
+    {
+        "trade_id": "650174",
+        "status": "failed",
+        "error": "Execution timeout",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": false,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "889532",
+        "status": "successful",
+        "error": "Price slippage",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": true,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "987257",
+        "status": "successful",
+        "error": "Insufficient funds",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": true,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "885130",
+        "status": "successful",
+        "error": "Execution timeout",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": true,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "417655",
+        "status": "successful",
+        "error": "API error",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": false,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "266084",
+        "status": "failed",
+        "error": "Execution timeout",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": false,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "739383",
+        "status": "successful",
+        "error": "Price slippage",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": false,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "939469",
+        "status": "successful",
+        "error": "Insufficient funds",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": true,
+        "auto_resolved": true
+    },
+    {
+        "trade_id": "974161",
+        "status": "successful",
+        "error": "Insufficient funds",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": true,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "379142",
+        "status": "successful",
+        "error": "Execution timeout",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": false,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "114958",
+        "status": "failed",
+        "error": "Execution timeout",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": false,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "601675",
+        "status": "failed",
+        "error": "Insufficient funds",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": true,
+        "auto_resolved": true
+    },
+    {
+        "trade_id": "871130",
+        "status": "successful",
+        "error": "Insufficient funds",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": true,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "128161",
+        "status": "successful",
+        "error": "Insufficient funds",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": true,
+        "auto_resolved": true
+    },
+    {
+        "trade_id": "550460",
+        "status": "successful",
+        "error": "Price slippage",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": false,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "505941",
+        "status": "failed",
+        "error": "API error",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": false,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "444935",
+        "status": "successful",
+        "error": "Insufficient funds",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": true,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "945175",
+        "status": "failed",
+        "error": "API error",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": true,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "995281",
+        "status": "failed",
+        "error": "Execution timeout",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": true,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "200419",
+        "status": "failed",
+        "error": "Execution timeout",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": true,
+        "auto_resolved": true
+    },
+    {
+        "trade_id": "184876",
+        "status": "failed",
+        "error": "Price slippage",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": false,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "422538",
+        "status": "successful",
+        "error": "API error",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": true,
+        "auto_resolved": true
+    },
+    {
+        "trade_id": "820222",
+        "status": "successful",
+        "error": "Insufficient funds",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": true,
+        "auto_resolved": true
+    },
+    {
+        "trade_id": "699731",
+        "status": "successful",
+        "error": "Execution timeout",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": false,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "871329",
+        "status": "successful",
+        "error": "API error",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": true,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "465532",
+        "status": "successful",
+        "error": "Execution timeout",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": false,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "818656",
+        "status": "successful",
+        "error": "Price slippage",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": false,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "354452",
+        "status": "successful",
+        "error": "API error",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": true,
+        "auto_resolved": true
+    },
+    {
+        "trade_id": "110373",
+        "status": "successful",
+        "error": "Execution timeout",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": true,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "441706",
+        "status": "failed",
+        "error": "Price slippage",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": true,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "772067",
+        "status": "failed",
+        "error": "Execution timeout",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": true,
+        "auto_resolved": true
+    },
+    {
+        "trade_id": "917485",
+        "status": "failed",
+        "error": "API error",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": false,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "376766",
+        "status": "successful",
+        "error": "Price slippage",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": false,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "965514",
+        "status": "failed",
+        "error": "API error",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": false,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "922671",
+        "status": "successful",
+        "error": "Insufficient funds",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": false,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "859731",
+        "status": "failed",
+        "error": "Price slippage",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": true,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "682627",
+        "status": "failed",
+        "error": "API error",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": true,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "476187",
+        "status": "successful",
+        "error": "Execution timeout",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": false,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "292522",
+        "status": "failed",
+        "error": "Execution timeout",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": true,
+        "auto_resolved": true
+    },
+    {
+        "trade_id": "421205",
+        "status": "failed",
+        "error": "Price slippage",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": false,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "480958",
+        "status": "failed",
+        "error": "Price slippage",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": false,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "803435",
+        "status": "successful",
+        "error": "Execution timeout",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": false,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "557725",
+        "status": "successful",
+        "error": "API error",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": true,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "356423",
+        "status": "failed",
+        "error": "Insufficient funds",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": false,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "939702",
+        "status": "successful",
+        "error": "Insufficient funds",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": false,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "339817",
+        "status": "successful",
+        "error": "Insufficient funds",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": false,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "833610",
+        "status": "failed",
+        "error": "Insufficient funds",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": true,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "234900",
+        "status": "successful",
+        "error": "Price slippage",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": true,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "255253",
+        "status": "successful",
+        "error": "Execution timeout",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": true,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "525612",
+        "status": "failed",
+        "error": "Price slippage",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": false,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "349577",
+        "status": "failed",
+        "error": "API error",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": false,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "649170",
+        "status": "failed",
+        "error": "Price slippage",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": true,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "475265",
+        "status": "failed",
+        "error": "Price slippage",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": true,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "506937",
+        "status": "successful",
+        "error": "Execution timeout",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": false,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "825114",
+        "status": "successful",
+        "error": "Insufficient funds",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": false,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "217344",
+        "status": "successful",
+        "error": "API error",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": true,
+        "auto_resolved": true
+    },
+    {
+        "trade_id": "835938",
+        "status": "successful",
+        "error": "Execution timeout",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": false,
+        "auto_resolved": false
+    },
+    {
+        "trade_id": "711905",
+        "status": "successful",
+        "error": "Price slippage",
+        "timestamp": "2025-03-04 17:42:05",
+        "Noticed": false,
+        "auto_resolved": false
+    }
+]

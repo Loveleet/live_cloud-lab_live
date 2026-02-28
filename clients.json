@@ -1,0 +1,302 @@
+[
+    {
+        "Client_id": "INV5309",
+        "Investment_allowed": 908.61,
+        "Active": true,
+        "timestamp": "2025-03-04 17:42:05"
+    },
+    {
+        "Client_id": "INV4540",
+        "Investment_allowed": 330.48,
+        "Active": true,
+        "timestamp": "2025-03-04 17:42:05"
+    },
+    {
+        "Client_id": "INV1257",
+        "Investment_allowed": 700.99,
+        "Active": true,
+        "timestamp": "2025-03-04 17:42:05"
+    },
+    {
+        "Client_id": "INV7475",
+        "Investment_allowed": 314.03,
+        "Active": true,
+        "timestamp": "2025-03-04 17:42:05"
+    },
+    {
+        "Client_id": "INV6839",
+        "Investment_allowed": 822.66,
+        "Active": false,
+        "timestamp": "2025-03-04 17:42:05"
+    },
+    {
+        "Client_id": "INV2623",
+        "Investment_allowed": 522.09,
+        "Active": true,
+        "timestamp": "2025-03-04 17:42:05"
+    },
+    {
+        "Client_id": "INV1771",
+        "Investment_allowed": 100.97,
+        "Active": false,
+        "timestamp": "2025-03-04 17:42:05"
+    },
+    {
+        "Client_id": "INV1545",
+        "Investment_allowed": 132.13,
+        "Active": true,
+        "timestamp": "2025-03-04 17:42:05"
+    },
+    {
+        "Client_id": "INV9320",
+        "Investment_allowed": 636.77,
+        "Active": false,
+        "timestamp": "2025-03-04 17:42:05"
+    },
+    {
+        "Client_id": "INV9030",
+        "Investment_allowed": 125.2,
+        "Active": true,
+        "timestamp": "2025-03-04 17:42:05"
+    },
+    {
+        "Client_id": "INV9764",
+        "Investment_allowed": 687.3,
+        "Active": true,
+        "timestamp": "2025-03-04 17:42:05"
+    },
+    {
+        "Client_id": "INV2067",
+        "Investment_allowed": 696.93,
+        "Active": true,
+        "timestamp": "2025-03-04 17:42:05"
+    },
+    {
+        "Client_id": "INV3997",
+        "Investment_allowed": 242.24,
+        "Active": true,
+        "timestamp": "2025-03-04 17:42:05"
+    },
+    {
+        "Client_id": "INV8344",
+        "Investment_allowed": 982.67,
+        "Active": true,
+        "timestamp": "2025-03-04 17:42:05"
+    },
+    {
+        "Client_id": "INV8648",
+        "Investment_allowed": 379.31,
+        "Active": true,
+        "timestamp": "2025-03-04 17:42:05"
+    },
+    {
+        "Client_id": "INV3876",
+        "Investment_allowed": 697.93,
+        "Active": true,
+        "timestamp": "2025-03-04 17:42:05"
+    },
+    {
+        "Client_id": "INV8477",
+        "Investment_allowed": 723.58,
+        "Active": true,
+        "timestamp": "2025-03-04 17:42:05"
+    },
+    {
+        "Client_id": "INV8549",
+        "Investment_allowed": 676.97,
+        "Active": false,
+        "timestamp": "2025-03-04 17:42:05"
+    },
+    {
+        "Client_id": "INV1195",
+        "Investment_allowed": 183.85,
+        "Active": true,
+        "timestamp": "2025-03-04 17:42:05"
+    },
+    {
+        "Client_id": "INV3822",
+        "Investment_allowed": 118.45,
+        "Active": false,
+        "timestamp": "2025-03-04 17:42:05"
+    },
+    {
+        "Client_id": "INV6929",
+        "Investment_allowed": 653.82,
+        "Active": true,
+        "timestamp": "2025-03-04 17:42:05"
+    },
+    {
+        "Client_id": "INV3669",
+        "Investment_allowed": 816.61,
+        "Active": true,
+        "timestamp": "2025-03-04 17:42:05"
+    },
+    {
+        "Client_id": "INV3263",
+        "Investment_allowed": 773.85,
+        "Active": false,
+        "timestamp": "2025-03-04 17:42:05"
+    },
+    {
+        "Client_id": "INV2783",
+        "Investment_allowed": 790.84,
+        "Active": false,
+        "timestamp": "2025-03-04 17:42:05"
+    },
+    {
+        "Client_id": "INV2355",
+        "Investment_allowed": 836.19,
+        "Active": true,
+        "timestamp": "2025-03-04 17:42:05"
+    },
+    {
+        "Client_id": "INV6371",
+        "Investment_allowed": 242.7,
+        "Active": false,
+        "timestamp": "2025-03-04 17:42:05"
+    },
+    {
+        "Client_id": "INV2847",
+        "Investment_allowed": 403.46,
+        "Active": true,
+        "timestamp": "2025-03-04 17:42:05"
+    },
+    {
+        "Client_id": "INV7332",
+        "Investment_allowed": 765.54,
+        "Active": true,
+        "timestamp": "2025-03-04 17:42:05"
+    },
+    {
+        "Client_id": "INV6477",
+        "Investment_allowed": 659.85,
+        "Active": true,
+        "timestamp": "2025-03-04 17:42:05"
+    },
+    {
+        "Client_id": "INV8977",
+        "Investment_allowed": 613.37,
+        "Active": true,
+        "timestamp": "2025-03-04 17:42:05"
+    },
+    {
+        "Client_id": "INV4169",
+        "Investment_allowed": 237.57,
+        "Active": true,
+        "timestamp": "2025-03-04 17:42:05"
+    },
+    {
+        "Client_id": "INV3347",
+        "Investment_allowed": 721.96,
+        "Active": false,
+        "timestamp": "2025-03-04 17:42:05"
+    },
+    {
+        "Client_id": "INV1128",
+        "Investment_allowed": 576.81,
+        "Active": false,
+        "timestamp": "2025-03-04 17:42:05"
+    },
+    {
+        "Client_id": "INV8884",
+        "Investment_allowed": 350.37,
+        "Active": false,
+        "timestamp": "2025-03-04 17:42:05"
+    },
+    {
+        "Client_id": "INV4885",
+        "Investment_allowed": 578.75,
+        "Active": true,
+        "timestamp": "2025-03-04 17:42:05"
+    },
+    {
+        "Client_id": "INV5143",
+        "Investment_allowed": 217.6,
+        "Active": true,
+        "timestamp": "2025-03-04 17:42:05"
+    },
+    {
+        "Client_id": "INV6512",
+        "Investment_allowed": 726.61,
+        "Active": false,
+        "timestamp": "2025-03-04 17:42:05"
+    },
+    {
+        "Client_id": "INV6416",
+        "Investment_allowed": 606.37,
+        "Active": true,
+        "timestamp": "2025-03-04 17:42:05"
+    },
+    {
+        "Client_id": "INV4119",
+        "Investment_allowed": 365.11,
+        "Active": false,
+        "timestamp": "2025-03-04 17:42:05"
+    },
+    {
+        "Client_id": "INV4297",
+        "Investment_allowed": 107.89,
+        "Active": true,
+        "timestamp": "2025-03-04 17:42:05"
+    },
+    {
+        "Client_id": "INV1225",
+        "Investment_allowed": 296.15,
+        "Active": false,
+        "timestamp": "2025-03-04 17:42:05"
+    },
+    {
+        "Client_id": "INV4148",
+        "Investment_allowed": 121.14,
+        "Active": false,
+        "timestamp": "2025-03-04 17:42:05"
+    },
+    {
+        "Client_id": "INV1344",
+        "Investment_allowed": 546.0,
+        "Active": false,
+        "timestamp": "2025-03-04 17:42:05"
+    },
+    {
+        "Client_id": "INV8465",
+        "Investment_allowed": 223.53,
+        "Active": true,
+        "timestamp": "2025-03-04 17:42:05"
+    },
+    {
+        "Client_id": "INV9294",
+        "Investment_allowed": 858.66,
+        "Active": true,
+        "timestamp": "2025-03-04 17:42:05"
+    },
+    {
+        "Client_id": "INV7400",
+        "Investment_allowed": 150.88,
+        "Active": true,
+        "timestamp": "2025-03-04 17:42:05"
+    },
+    {
+        "Client_id": "INV6217",
+        "Investment_allowed": 866.5,
+        "Active": true,
+        "timestamp": "2025-03-04 17:42:05"
+    },
+    {
+        "Client_id": "INV9875",
+        "Investment_allowed": 371.67,
+        "Active": false,
+        "timestamp": "2025-03-04 17:42:05"
+    },
+    {
+        "Client_id": "INV1376",
+        "Investment_allowed": 553.15,
+        "Active": true,
+        "timestamp": "2025-03-04 17:42:05"
+    },
+    {
+        "Client_id": "INV2075",
+        "Investment_allowed": 816.43,
+        "Active": true,
+        "timestamp": "2025-03-04 17:42:05"
+    }
+]
